@@ -176,58 +176,59 @@ def main():
 
     with open(module.params["output_path"], 'w') as f:
         conf.write(f)
+
     module.exit_json()
 
 
-def parse_arguments():
-    # TODO(tkammer): add mutual exclusion groups
-    parser = argparse.ArgumentParser(__doc__)
-    parser.add_argument('--create', action='store_true', default=False,
-                        help='create default tempest resources')
-    parser.add_argument('--out', default="etc/tempest.conf",
-                        help='the tempest.conf file to write')
-    parser.add_argument('--deployer-input', default=None,
-                        help="""A file in the format of tempest.conf that will
-                                override the default values. The
-                                deployer-input file is an alternative to
-                                providing key/value pairs. If there are also
-                                key/value pairs they will be applied after the
-                                deployer-input file.
-                        """)
-    parser.add_argument('overrides', nargs='*', default=[],
-                        help="""key value pairs to modify. The key is
-                                section.key where section is a section header
-                                in the conf file.
-                                For example: identity.username myname
-                                 identity.password mypass""")
-    parser.add_argument('--debug', action='store_true', default=False,
-                        help='Print debugging information')
-    parser.add_argument('--verbose', '-v', action='store_true', default=False,
-                        help='Print more information about the execution')
-    parser.add_argument('--non-admin', action='store_true', default=False,
-                        help='Run without admin creds')
-    parser.add_argument('--use-test-accounts', action='store_true',
-                        default=False, help='Use accounts from accounts.yaml')
-    parser.add_argument('--image-disk-format', default=DEFAULT_IMAGE_FORMAT,
-                        help="""a format of an image to be uploaded to glance.
-                                Default is '%s'""" % DEFAULT_IMAGE_FORMAT)
-    parser.add_argument('--image', default=DEFAULT_IMAGE,
-                        help="""an image to be uploaded to glance. The name of
-                                the image is the leaf name of the path which
-                                can be either a filename or url. Default is
-                                '%s'""" % DEFAULT_IMAGE)
-    parser.add_argument('--network-id',
-                        help="""The ID of an existing network in our openstack
-                                instance with external connectivity""")
-
-    args = parser.parse_args()
-
-    if args.create and args.non_admin:
-        raise Exception("Options '--create' and '--non-admin' cannot be used"
-                        " together, since creating" " resources requires"
-                        " admin rights")
-    args.overrides = parse_overrides(args.overrides)
-    return args
+# def parse_arguments():
+#     # TODO(tkammer): add mutual exclusion groups
+#     parser = argparse.ArgumentParser(__doc__)
+#     parser.add_argument('--create', action='store_true', default=False,
+#                         help='create default tempest resources')
+#     parser.add_argument('--out', default="etc/tempest.conf",
+#                         help='the tempest.conf file to write')
+#     parser.add_argument('--deployer-input', default=None,
+#                         help="""A file in the format of tempest.conf that will
+#                                 override the default values. The
+#                                 deployer-input file is an alternative to
+#                                 providing key/value pairs. If there are also
+#                                 key/value pairs they will be applied after the
+#                                 deployer-input file.
+#                         """)
+#     parser.add_argument('overrides', nargs='*', default=[],
+#                         help="""key value pairs to modify. The key is
+#                                 section.key where section is a section header
+#                                 in the conf file.
+#                                 For example: identity.username myname
+#                                  identity.password mypass""")
+#     parser.add_argument('--debug', action='store_true', default=False,
+#                         help='Print debugging information')
+#     parser.add_argument('--verbose', '-v', action='store_true', default=False,
+#                         help='Print more information about the execution')
+#     parser.add_argument('--non-admin', action='store_true', default=False,
+#                         help='Run without admin creds')
+#     parser.add_argument('--use-test-accounts', action='store_true',
+#                         default=False, help='Use accounts from accounts.yaml')
+#     parser.add_argument('--image-disk-format', default=DEFAULT_IMAGE_FORMAT,
+#                         help="""a format of an image to be uploaded to glance.
+#                                 Default is '%s'""" % DEFAULT_IMAGE_FORMAT)
+#     parser.add_argument('--image', default=DEFAULT_IMAGE,
+#                         help="""an image to be uploaded to glance. The name of
+#                                 the image is the leaf name of the path which
+#                                 can be either a filename or url. Default is
+#                                 '%s'""" % DEFAULT_IMAGE)
+#     parser.add_argument('--network-id',
+#                         help="""The ID of an existing network in our openstack
+#                                 instance with external connectivity""")
+#
+#     args = parser.parse_args()
+#
+#     if args.create and args.non_admin:
+#         raise Exception("Options '--create' and '--non-admin' cannot be used"
+#                         " together, since creating" " resources requires"
+#                         " admin rights")
+#     args.overrides = parse_overrides(args.overrides)
+#     return args
 
 
 def parse_overrides(overrides):
