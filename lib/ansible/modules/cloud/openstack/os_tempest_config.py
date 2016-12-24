@@ -105,9 +105,10 @@ def main():
         "network_id": {"type": "str", "required": False},
         "virtualenv": {"type": "path", "required": False}
     })
-    logging.disable(logging.CRITICAL)
-    # logging.getLogger('tempest').propagate = False
-    # logging.getLogger('api_discovery').propagate = False
+    # disable all loggers
+    for key in logging.Logger.manager.loggerDict:
+        logging.getLogger(key).propagate = False
+
     activate_virtual_environment(module.params["virtualenv"])
 
     conf = TempestConf()
