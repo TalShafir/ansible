@@ -103,12 +103,15 @@ def main():
         "image_disk_format": {"type": "str", "required": False, "default": DEFAULT_IMAGE_FORMAT},
         "image": {"type": "str", "required": False, "default": DEFAULT_IMAGE},
         "network_id": {"type": "str", "required": False},
+        "virtualenv": {"type": "path", "required": False}
     })
-
-    logging.getLogger('tempest').propagate = False
-    logging.getLogger('api_discovery').propagate = False
+    logging.disable(logging.CRITICAL)
+    # logging.getLogger('tempest').propagate = False
+    # logging.getLogger('api_discovery').propagate = False
+    activate_virtual_environment(module.params["virtualenv"])
 
     conf = TempestConf()
+
     if module.params["defaults_file"]:
         abs_default_file_path = os.path.abspath(os.path.expandvars(module.params["defaults_file"]))
         if os.path.isfile(abs_default_file_path):
@@ -124,7 +127,7 @@ def main():
     if module.params["overrides"]:
         for section, key, value in module.params["overrides"]:
             conf.set(section, key, value, priority=True)
-
+    
     if "identity" in conf.sections():
         uri = conf.get("identity", "uri")
     else:
@@ -178,6 +181,20 @@ def main():
         conf.write(f)
 
     module.exit_json()
+
+
+def activate_virtual_environment(environment_path):
+    """
+        Activate the python virtual environment in the given path
+        :param environment_path: A path to the python virtual environment
+        :type environment_path: str
+        """
+    activation_script_suffix = '/bin/activate_this.py'
+    activate_venv = environment_path + activation_script_suffix
+    if sys.version_info >= (3, 0):
+        exec(compile(open(activate_venv, "rb").read(), activate_venv, 'exec'))
+    else:
+        execfile(activate_venv, dict(__file__=activate_venv))
 
 
 # def parse_arguments():
