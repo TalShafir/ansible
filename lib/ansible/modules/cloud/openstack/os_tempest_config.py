@@ -1,8 +1,8 @@
 #!/usr/bin/python
 
 from ansible.module_utils.basic import *
+from ansible.utils.path import unfrackpath
 
-import tempest.config
 import argparse
 import ConfigParser
 import os
@@ -94,7 +94,7 @@ def main():
     module = AnsibleModule(argument_spec={
         "output_path": {"type": "path", "required": True},
         "overrides_file": {"type": "path", "required": False},
-        "defaults_file": {"type": "path", "required": False},
+        "defaults_file": {"type": "path", "required": True},
         "deployer_input": {"type": "path", "required": False},
         "overrides": {"type": "str", "required": False},
         "create": {"type": "bool", "required": False, "default": False},
@@ -105,22 +105,42 @@ def main():
         "network_id": {"type": "str", "required": False},
         "virtualenv": {"type": "path", "required": False}
     })
+
+    if module.params["deployer_input"] and not os.path.isfile(unfrackpath(module.params["deployer_input"])):
+        module.fail_json(msg="")
+    if module.params["virtualenv"]:
+        if os.path.isdir(unfrackpath(module.params["virtualenv"])):
+            activate_virtual_environment(unfrackpath(module.params["virtualenv"]))
+        else:
+            module.fail_json(msg="the given virtualenv is not a valid directory",
+                             path=unfrackpath(module.params["virtualenv"]))
+
     # disable all loggers
+    logging.disable(logging.CRITICAL)
     for key in logging.Logger.manager.loggerDict:
         logging.getLogger(key).propagate = False
+        logging.getLogger(key).handlers[:] = []
+        logging.getLogger(key).addHandler(logging.NullHandler())
 
-    activate_virtual_environment(module.params["virtualenv"])
+    root_logger = logging.getLogger(None)
+    root_logger.propagate = False
+    root_logger.handlers[:] = []
+    root_logger.addHandler(logging.NullHandler())
+
+    # logging.getLogger('tempest').addHandler(logging.NullHandler())
+    # logging.getLogger('tempest').propagate = False
+    # module.exit_json(dsa=str(logging.getLogger('tempest')))
 
     conf = TempestConf()
 
     if module.params["defaults_file"]:
-        abs_default_file_path = os.path.abspath(os.path.expandvars(module.params["defaults_file"]))
+        abs_default_file_path = unfrackpath(module.params["defaults_file"])
         if os.path.isfile(abs_default_file_path):
             conf.read(abs_default_file_path)
 
-    if module.params["deployer_input"] and os.path.isfile(module.params["deployer_input"]):
+    if module.params["deployer_input"]:
         deployer_input = ConfigParser.SafeConfigParser()
-        deployer_input.read(module.params["deployer_input"])
+        deployer_input.read(unfrackpath(module.params["deployer_input"]))
         for section in deployer_input.sections():
             # There are no deployer input options in DEFAULT
             for (key, value) in deployer_input.items(section):
@@ -128,7 +148,7 @@ def main():
     if module.params["overrides"]:
         for section, key, value in module.params["overrides"]:
             conf.set(section, key, value, priority=True)
-    
+
     if "identity" in conf.sections():
         uri = conf.get("identity", "uri")
     else:
@@ -151,6 +171,7 @@ def main():
         conf.set("auth", "allow_tenant_isolation", "False")
     if module.params["use_test_accounts"]:
         conf.set("auth", "allow_tenant_isolation", "True")
+
     clients = ClientManager(conf, module.params["admin_cred"])
     swift_discover = conf.get_defaulted('object-storage-feature-enabled',
                                         'discoverability')
@@ -164,6 +185,7 @@ def main():
             'disable_ssl_certificate_validation'
         )
     )
+
     if module.params["create"] and not module.params["use_test_accounts"]:
         create_tempest_users(clients.tenants, clients.roles, clients.users,
                              conf, services)
@@ -178,7 +200,7 @@ def main():
     configure_boto(conf, services)
     configure_horizon(conf)
 
-    with open(module.params["output_path"], 'w') as f:
+    with open(unfrackpath(module.params["output_path"]), 'w') as f:
         conf.write(f)
 
     module.exit_json()
@@ -193,7 +215,7 @@ def activate_virtual_environment(environment_path):
     activation_script_suffix = '/bin/activate_this.py'
     activate_venv = environment_path + activation_script_suffix
     if sys.version_info >= (3, 0):
-        exec(compile(open(activate_venv, "rb").read(), activate_venv, 'exec'))
+        exec (compile(open(activate_venv, "rb").read(), activate_venv, 'exec'))
     else:
         execfile(activate_venv, dict(__file__=activate_venv))
 
