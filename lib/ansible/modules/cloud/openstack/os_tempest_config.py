@@ -107,7 +107,7 @@ def main():
     })
 
     if module.params["deployer_input"] and not os.path.isfile(unfrackpath(module.params["deployer_input"])):
-        module.fail_json(msg="")
+        module.fail_json(msg="the deployer_input file is not a file")
     if module.params["virtualenv"]:
         if os.path.isdir(unfrackpath(module.params["virtualenv"])):
             activate_virtual_environment(unfrackpath(module.params["virtualenv"]))
@@ -115,17 +115,17 @@ def main():
             module.fail_json(msg="the given virtualenv is not a valid directory",
                              path=unfrackpath(module.params["virtualenv"]))
 
-    # disable all loggers
-    logging.disable(logging.CRITICAL)
-    for key in logging.Logger.manager.loggerDict:
-        logging.getLogger(key).propagate = False
-        logging.getLogger(key).handlers[:] = []
-        logging.getLogger(key).addHandler(logging.NullHandler())
-
-    root_logger = logging.getLogger(None)
-    root_logger.propagate = False
-    root_logger.handlers[:] = []
-    root_logger.addHandler(logging.NullHandler())
+    # # disable all loggers
+    # logging.disable(logging.CRITICAL)
+    # for key in logging.Logger.manager.loggerDict:
+    #     logging.getLogger(key).propagate = False
+    #     logging.getLogger(key).handlers[:] = []
+    #     logging.getLogger(key).addHandler(logging.NullHandler())
+    #
+    # root_logger = logging.getLogger(None)
+    # root_logger.propagate = False
+    # root_logger.handlers[:] = []
+    # root_logger.addHandler(logging.NullHandler())
 
     # logging.getLogger('tempest').addHandler(logging.NullHandler())
     # logging.getLogger('tempest').propagate = False
@@ -189,6 +189,7 @@ def main():
     if module.params["create"] and not module.params["use_test_accounts"]:
         create_tempest_users(clients.tenants, clients.roles, clients.users,
                              conf, services)
+    # TODO take too long check about SSH timeout, ansible print no output at all
     create_tempest_flavors(clients.flavors, conf, module.params["create"])
     create_tempest_images(clients.images, conf, module.params["image"], module.params["create"],
                           module.params["image_disk_format"])
@@ -203,7 +204,7 @@ def main():
     with open(unfrackpath(module.params["output_path"]), 'w') as f:
         conf.write(f)
 
-    module.exit_json()
+    module.exit_json(msg="generated tempest.conf successfully", path=unfrackpath(module.params["output_path"]))
 
 
 def activate_virtual_environment(environment_path):
@@ -461,6 +462,11 @@ class TempestConf(ConfigParser.SafeConfigParser):
     # set of pairs `(section, key)` which have a higher priority (are
     # user-defined) and will usually not be overwritten by `set()`
     priority_sectionkeys = set()
+
+    # disable logging TODO find a better way
+    tempest.config._CONF.log_file = 'null'
+    tempest.config._CONF.log_dir = '/dev/'
+    tempest.config._CONF.use_stderr = False
 
     CONF = tempest.config.TempestConfigPrivate(parse_conf=False)
 
