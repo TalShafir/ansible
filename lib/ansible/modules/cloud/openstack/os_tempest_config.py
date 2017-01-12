@@ -9,7 +9,6 @@ import os
 import shutil
 import sys
 import urllib2
-import logging
 
 from tempest.common import api_discovery
 from tempest.common import identity
@@ -105,7 +104,8 @@ def main():
         "network_id": {"type": "str", "required": False},
         "virtualenv": {"type": "path", "required": False}
     })
-
+    if module.params["create"] and not module.params["admin_cred"]:
+        module.fail_json(msg="Cannot use 'create' param without 'admin_cred' param as True")
     if module.params["deployer_input"] and not os.path.isfile(unfrackpath(module.params["deployer_input"])):
         module.fail_json(msg="the deployer_input file is not a file")
     if module.params["virtualenv"]:
@@ -115,96 +115,82 @@ def main():
             module.fail_json(msg="the given virtualenv is not a valid directory",
                              path=unfrackpath(module.params["virtualenv"]))
 
-    # # disable all loggers
-    # logging.disable(logging.CRITICAL)
-    # for key in logging.Logger.manager.loggerDict:
-    #     logging.getLogger(key).propagate = False
-    #     logging.getLogger(key).handlers[:] = []
-    #     logging.getLogger(key).addHandler(logging.NullHandler())
-    #
-    # root_logger = logging.getLogger(None)
-    # root_logger.propagate = False
-    # root_logger.handlers[:] = []
-    # root_logger.addHandler(logging.NullHandler())
+    try:
+        conf = TempestConf()
 
-    # logging.getLogger('tempest').addHandler(logging.NullHandler())
-    # logging.getLogger('tempest').propagate = False
-    # module.exit_json(dsa=str(logging.getLogger('tempest')))
+        if module.params["defaults_file"]:
+            abs_default_file_path = unfrackpath(module.params["defaults_file"])
+            if os.path.isfile(abs_default_file_path):
+                conf.read(abs_default_file_path)
 
-    conf = TempestConf()
-
-    if module.params["defaults_file"]:
-        abs_default_file_path = unfrackpath(module.params["defaults_file"])
-        if os.path.isfile(abs_default_file_path):
-            conf.read(abs_default_file_path)
-
-    if module.params["deployer_input"]:
-        deployer_input = ConfigParser.SafeConfigParser()
-        deployer_input.read(unfrackpath(module.params["deployer_input"]))
-        for section in deployer_input.sections():
-            # There are no deployer input options in DEFAULT
-            for (key, value) in deployer_input.items(section):
+        if module.params["deployer_input"]:
+            deployer_input = ConfigParser.SafeConfigParser()
+            deployer_input.read(unfrackpath(module.params["deployer_input"]))
+            for section in deployer_input.sections():
+                # There are no deployer input options in DEFAULT
+                for (key, value) in deployer_input.items(section):
+                    conf.set(section, key, value, priority=True)
+        if module.params["overrides"]:
+            for section, key, value in module.params["overrides"]:
                 conf.set(section, key, value, priority=True)
-    if module.params["overrides"]:
-        for section, key, value in module.params["overrides"]:
-            conf.set(section, key, value, priority=True)
 
-    if "identity" in conf.sections():
-        uri = conf.get("identity", "uri")
-    else:
-        module.fail_json(msg="the module is missing the 'identity' section.")
+        if "identity" in conf.sections():
+            uri = conf.get("identity", "uri")
+        else:
+            module.fail_json(msg="the module is missing the 'identity' section.")
 
-    api_version = 2
-    v3_only = False
-    if "v3" in uri and v3_only:
-        api_version = 3
-    if "v3" in uri:
-        conf.set("identity", "auth_version", "v3")
-        conf.set("identity", "uri", uri.replace("v3", "v2.0"), priority=True)
-        conf.set("identity", "uri_v3", uri)
-    else:
-        conf.set("identity", "uri_v3", uri.replace("v2.0", "v3"))
-    if not module.params["admin_cred"]:
-        conf.set("identity", "admin_username", "")
-        conf.set("identity", "admin_tenant_name", "")
-        conf.set("identity", "admin_password", "")
-        conf.set("auth", "allow_tenant_isolation", "False")
-    if module.params["use_test_accounts"]:
-        conf.set("auth", "allow_tenant_isolation", "True")
+        api_version = 2
+        v3_only = False
+        if "v3" in uri and v3_only:
+            api_version = 3
+        if "v3" in uri:
+            conf.set("identity", "auth_version", "v3")
+            conf.set("identity", "uri", uri.replace("v3", "v2.0"), priority=True)
+            conf.set("identity", "uri_v3", uri)
+        else:
+            conf.set("identity", "uri_v3", uri.replace("v2.0", "v3"))
+        if not module.params["admin_cred"]:
+            conf.set("identity", "admin_username", "")
+            conf.set("identity", "admin_tenant_name", "")
+            conf.set("identity", "admin_password", "")
+            conf.set("auth", "allow_tenant_isolation", "False")
+        if module.params["use_test_accounts"]:
+            conf.set("auth", "allow_tenant_isolation", "True")
 
-    clients = ClientManager(conf, module.params["admin_cred"])
-    swift_discover = conf.get_defaulted('object-storage-feature-enabled',
-                                        'discoverability')
-    services = api_discovery.discover(
-        clients.auth_provider,
-        clients.identity_region,
-        object_store_discovery=conf.get_bool_value(swift_discover),
-        api_version=api_version,
-        disable_ssl_certificate_validation=conf.get_defaulted(
-            'identity',
-            'disable_ssl_certificate_validation'
+        clients = ClientManager(conf, module.params["admin_cred"])
+        swift_discover = conf.get_defaulted('object-storage-feature-enabled',
+                                            'discoverability')
+        services = api_discovery.discover(
+            clients.auth_provider,
+            clients.identity_region,
+            object_store_discovery=conf.get_bool_value(swift_discover),
+            api_version=api_version,
+            disable_ssl_certificate_validation=conf.get_defaulted(
+                'identity',
+                'disable_ssl_certificate_validation'
+            )
         )
-    )
 
-    if module.params["create"] and not module.params["use_test_accounts"]:
-        create_tempest_users(clients.tenants, clients.roles, clients.users,
-                             conf, services)
-    # TODO take too long check about SSH timeout, ansible print no output at all
-    create_tempest_flavors(clients.flavors, conf, module.params["create"])
-    create_tempest_images(clients.images, conf, module.params["image"], module.params["create"],
-                          module.params["image_disk_format"])
-    has_neutron = "network" in services
+        if module.params["create"] and not module.params["use_test_accounts"]:
+            create_tempest_users(clients.tenants, clients.roles, clients.users,
+                                 conf, services)  # TODO fix error unauthorized line 528 probably
+        create_tempest_flavors(clients.flavors, conf, module.params["create"])
+        create_tempest_images(clients.images, conf, module.params["image"], module.params["create"],
+                              module.params["image_disk_format"])
+        has_neutron = "network" in services
 
-    create_tempest_networks(clients, conf, has_neutron, module.params["network_id"])
+        create_tempest_networks(clients, conf, has_neutron, module.params["network_id"])
 
-    configure_discovered_services(conf, services)
-    configure_boto(conf, services)
-    configure_horizon(conf)
+        configure_discovered_services(conf, services)
+        configure_boto(conf, services)
+        configure_horizon(conf)
 
-    with open(unfrackpath(module.params["output_path"]), 'w') as f:
-        conf.write(f)
+        with open(unfrackpath(module.params["output_path"]), 'w') as f:
+            conf.write(f)
 
-    module.exit_json(msg="generated tempest.conf successfully", path=unfrackpath(module.params["output_path"]))
+        module.exit_json(msg="generated tempest.conf successfully", path=unfrackpath(module.params["output_path"]))
+    except Exception as error:
+        module.fail_json(msg=str(error))
 
 
 def activate_virtual_environment(environment_path):
@@ -464,8 +450,8 @@ class TempestConf(ConfigParser.SafeConfigParser):
     priority_sectionkeys = set()
 
     # disable logging TODO find a better way
-    tempest.config._CONF.log_file = 'null'
-    tempest.config._CONF.log_dir = '/dev/'
+    tempest.config._CONF.log_file = 'config.log'
+    tempest.config._CONF.log_dir = '/home/tshafir/'
     tempest.config._CONF.use_stderr = False
 
     CONF = tempest.config.TempestConfigPrivate(parse_conf=False)
@@ -562,11 +548,14 @@ def create_user_with_tenant(tenants_client, users_client, username,
     tenant_description = "Tenant for Tempest %s user" % username
     email = "%s@test.com" % username
     # create tenant
-
-    tenants_client.create_tenant(name=tenant_name,
-                                 description=tenant_description)
+    try:
+        tenants_client.create_tenant(name=tenant_name,
+                                     description=tenant_description)
+    except exceptions.Conflict:
+        pass
 
     tenant_id = identity.get_tenant_by_name(tenants_client, tenant_name)['id']
+
     # create user
     try:
         users_client.create_user(**{'name': username, 'password': password,
