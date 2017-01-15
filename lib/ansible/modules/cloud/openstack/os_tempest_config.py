@@ -3,7 +3,6 @@
 from ansible.module_utils.basic import *
 from ansible.utils.path import unfrackpath
 
-import argparse
 import ConfigParser
 import os
 import shutil
@@ -177,6 +176,8 @@ def main():
         create_tempest_flavors(clients.flavors, conf, module.params["create"])
         create_tempest_images(clients.images, conf, module.params["image"], module.params["create"],
                               module.params["image_disk_format"])
+        module.exit_json()
+
         has_neutron = "network" in services
 
         create_tempest_networks(clients, conf, has_neutron, module.params["network_id"])
@@ -534,9 +535,11 @@ def give_role_to_user(tenants_client, roles_client, users_client, username,
         if role_required:
             raise Exception("required role %s not found" % role_name)
 
-        return
     role_id = role_ids[0]
-    roles_client.create_user_role_on_project(tenant_id, user_id, role_id)
+    try:
+        roles_client.create_user_role_on_project(tenant_id, user_id, role_id)
+    except exceptions.Conflict:
+        pass
 
 
 def create_user_with_tenant(tenants_client, users_client, username,
@@ -552,8 +555,7 @@ def create_user_with_tenant(tenants_client, users_client, username,
         tenants_client.create_tenant(name=tenant_name,
                                      description=tenant_description)
     except exceptions.Conflict:
-        pass
-
+        pass  # ignore if exists
     tenant_id = identity.get_tenant_by_name(tenants_client, tenant_name)['id']
 
     # create user
@@ -635,6 +637,7 @@ def find_or_create_flavor(client, flavor_id, flavor_name,
 
 def create_tempest_images(client, conf, image_path, allow_creation,
                           disk_format):
+    # TODO fix assumption of /etc/...
     img_path = os.path.join(conf.get("scenario", "img_dir"),
                             conf.get_defaulted("scenario", "img_file"))
     name = image_path[image_path.rfind('/') + 1:]
