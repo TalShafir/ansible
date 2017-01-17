@@ -4,6 +4,7 @@ from ansible.module_utils.basic import *
 from ansible.utils.path import unfrackpath
 
 import ConfigParser
+import logging
 import os
 import shutil
 import sys
@@ -26,6 +27,8 @@ from tempest.lib.services.identity.v3 \
 from tempest.lib.services.image.v2 import images_client
 from tempest.lib.services.network import networks_client
 
+from contextlib import contextmanager
+
 DOCUMENTATION = '''
 ---
 module: os_tempest_config
@@ -43,6 +46,13 @@ options:
         required: False
         default: ''
 '''
+
+LOG = logging.getLogger(__name__)
+LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+
+DEFAULT_IMAGE = ("http://download.cirros-cloud.net/0.3.4/"
+                 "cirros-0.3.4-x86_64-disk.img")
+DEFAULT_IMAGE_FORMAT = 'qcow2'
 
 # services and their codenames
 SERVICE_NAMES = {
@@ -80,21 +90,15 @@ SERVICE_EXTENSION_KEY = {
     'identity': 'api_extensions'
 }
 
-# TEMPEST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-#
-# DEFAULTS_FILE = os.path.join(TEMPEST_DIR, "etc", "default-overrides.conf")
-DEFAULT_IMAGE = ("http://download.cirros-cloud.net/0.3.4/"
-                 "cirros-0.3.4-x86_64-disk.img")
-DEFAULT_IMAGE_FORMAT = 'qcow2'
-
 
 def main():
     module = AnsibleModule(argument_spec={
         "output_path": {"type": "path", "required": True},
         "overrides_file": {"type": "path", "required": False},
         "defaults_file": {"type": "path", "required": True},
+        "tempest_dir": {"type": "path", "required": True},
         "deployer_input": {"type": "path", "required": False},
-        "overrides": {"type": "str", "required": False},
+        "overrides": {"type": "list", "required": False},
         "create": {"type": "bool", "required": False, "default": False},
         "admin_cred": {"type": "bool", "required": False, "default": False},
         "use_test_accounts": {"type": "bool", "required": False, "default": False},
@@ -103,6 +107,9 @@ def main():
         "network_id": {"type": "str", "required": False},
         "virtualenv": {"type": "path", "required": False}
     })
+    # search depending on where Tempest is installed
+    sys.path.insert(0, unfrackpath(module.params["tempest_dir"]))
+
     if module.params["create"] and not module.params["admin_cred"]:
         module.fail_json(msg="Cannot use 'create' param without 'admin_cred' param as True")
     if module.params["deployer_input"] and not os.path.isfile(unfrackpath(module.params["deployer_input"])):
@@ -116,28 +123,22 @@ def main():
 
     try:
         conf = TempestConf()
-
-        if module.params["defaults_file"]:
-            abs_default_file_path = unfrackpath(module.params["defaults_file"])
-            if os.path.isfile(abs_default_file_path):
-                conf.read(abs_default_file_path)
-
-        if module.params["deployer_input"]:
+        if os.path.isfile(module.params["defaults_file"]):
+            LOG.info("Reading defaults from file '%s'", module.params["defaults_file"])
+            conf.read(module.params["defaults_file"])
+        if module.params["deployer_input"] and os.path.isfile(module.params["deployer_input"]):
+            LOG.info("Adding options from deployer-input file '%s'",
+                     module.params["deployer_input"])
             deployer_input = ConfigParser.SafeConfigParser()
-            deployer_input.read(unfrackpath(module.params["deployer_input"]))
+            deployer_input.read(module.params["deployer_input"])
             for section in deployer_input.sections():
                 # There are no deployer input options in DEFAULT
                 for (key, value) in deployer_input.items(section):
                     conf.set(section, key, value, priority=True)
         if module.params["overrides"]:
-            for section, key, value in module.params["overrides"]:
+            for section, key, value in parse_overrides(module.params["overrides"]):
                 conf.set(section, key, value, priority=True)
-
-        if "identity" in conf.sections():
-            uri = conf.get("identity", "uri")
-        else:
-            module.fail_json(msg="the module is missing the 'identity' section.")
-
+        uri = conf.get("identity", "uri")
         api_version = 2
         v3_only = False
         if "v3" in uri and v3_only:
@@ -155,7 +156,6 @@ def main():
             conf.set("auth", "allow_tenant_isolation", "False")
         if module.params["use_test_accounts"]:
             conf.set("auth", "allow_tenant_isolation", "True")
-
         clients = ClientManager(conf, module.params["admin_cred"])
         swift_discover = conf.get_defaulted('object-storage-feature-enabled',
                                             'discoverability')
@@ -169,27 +169,27 @@ def main():
                 'disable_ssl_certificate_validation'
             )
         )
-
         if module.params["create"] and not module.params["use_test_accounts"]:
             create_tempest_users(clients.tenants, clients.roles, clients.users,
-                                 conf, services)  # TODO fix error unauthorized line 528 probably
+                                 conf, services)
         create_tempest_flavors(clients.flavors, conf, module.params["create"])
         create_tempest_images(clients.images, conf, module.params["image"], module.params["create"],
-                              module.params["image_disk_format"])
-        module.exit_json()
-
+                              module.params["image_disk_format"], unfrackpath(module.params["tempest_dir"]))
         has_neutron = "network" in services
 
+        LOG.info("Setting up network")
+        LOG.debug("Is neutron present: {0}".format(has_neutron))
         create_tempest_networks(clients, conf, has_neutron, module.params["network_id"])
 
         configure_discovered_services(conf, services)
         configure_boto(conf, services)
         configure_horizon(conf)
-
-        with open(unfrackpath(module.params["output_path"]), 'w') as f:
+        LOG.info("Creating configuration file %s" % os.path.abspath(module.params["output_path"]))
+        with open(module.params["output_path"], 'w') as f:
             conf.write(f)
 
-        module.exit_json(msg="generated tempest.conf successfully", path=unfrackpath(module.params["output_path"]))
+        module.exit_json(msg="generated tempest.conf successfully",
+                         config_path=unfrackpath(module.params["output_path"]))
     except Exception as error:
         module.fail_json(msg=str(error))
 
@@ -208,55 +208,15 @@ def activate_virtual_environment(environment_path):
         execfile(activate_venv, dict(__file__=activate_venv))
 
 
-# def parse_arguments():
-#     # TODO(tkammer): add mutual exclusion groups
-#     parser = argparse.ArgumentParser(__doc__)
-#     parser.add_argument('--create', action='store_true', default=False,
-#                         help='create default tempest resources')
-#     parser.add_argument('--out', default="etc/tempest.conf",
-#                         help='the tempest.conf file to write')
-#     parser.add_argument('--deployer-input', default=None,
-#                         help="""A file in the format of tempest.conf that will
-#                                 override the default values. The
-#                                 deployer-input file is an alternative to
-#                                 providing key/value pairs. If there are also
-#                                 key/value pairs they will be applied after the
-#                                 deployer-input file.
-#                         """)
-#     parser.add_argument('overrides', nargs='*', default=[],
-#                         help="""key value pairs to modify. The key is
-#                                 section.key where section is a section header
-#                                 in the conf file.
-#                                 For example: identity.username myname
-#                                  identity.password mypass""")
-#     parser.add_argument('--debug', action='store_true', default=False,
-#                         help='Print debugging information')
-#     parser.add_argument('--verbose', '-v', action='store_true', default=False,
-#                         help='Print more information about the execution')
-#     parser.add_argument('--non-admin', action='store_true', default=False,
-#                         help='Run without admin creds')
-#     parser.add_argument('--use-test-accounts', action='store_true',
-#                         default=False, help='Use accounts from accounts.yaml')
-#     parser.add_argument('--image-disk-format', default=DEFAULT_IMAGE_FORMAT,
-#                         help="""a format of an image to be uploaded to glance.
-#                                 Default is '%s'""" % DEFAULT_IMAGE_FORMAT)
-#     parser.add_argument('--image', default=DEFAULT_IMAGE,
-#                         help="""an image to be uploaded to glance. The name of
-#                                 the image is the leaf name of the path which
-#                                 can be either a filename or url. Default is
-#                                 '%s'""" % DEFAULT_IMAGE)
-#     parser.add_argument('--network-id',
-#                         help="""The ID of an existing network in our openstack
-#                                 instance with external connectivity""")
-#
-#     args = parser.parse_args()
-#
-#     if args.create and args.non_admin:
-#         raise Exception("Options '--create' and '--non-admin' cannot be used"
-#                         " together, since creating" " resources requires"
-#                         " admin rights")
-#     args.overrides = parse_overrides(args.overrides)
-#     return args
+@contextmanager
+def no_std():
+    _stdout, _stderr = sys.stdout, sys.stderr
+    sys.stdout = sys.stderr = open(os.devnull, "w")
+
+    try:
+        yield
+    finally:
+        sys.stdout, sys.stderr = _stdout, _stderr
 
 
 def parse_overrides(overrides):
@@ -266,7 +226,7 @@ def parse_overrides(overrides):
     """
     if len(overrides) % 2 != 0:
         raise Exception("An odd number of override options was found. The"
-                        " overrides have to be in 'section.key value' format.")
+                        " overrides have to be in 'section.key value' format. ")
     i = 0
     new_overrides = []
     while i < len(overrides):
@@ -452,7 +412,7 @@ class TempestConf(ConfigParser.SafeConfigParser):
 
     # disable logging TODO find a better way
     tempest.config._CONF.log_file = 'config.log'
-    tempest.config._CONF.log_dir = '/home/tshafir/'
+    tempest.config._CONF.log_dir = ''
     tempest.config._CONF.use_stderr = False
 
     CONF = tempest.config.TempestConfigPrivate(parse_conf=False)
@@ -487,9 +447,13 @@ class TempestConf(ConfigParser.SafeConfigParser):
         if not self.has_section(section) and section.lower() != "default":
             self.add_section(section)
         if not priority and (section, key) in self.priority_sectionkeys:
+            LOG.debug("Option '[%s] %s = %s' was defined by user, NOT"
+                      " overwriting into value '%s'", section, key,
+                      self.get(section, key), value)
             return False
         if priority:
             self.priority_sectionkeys.add((section, key))
+        LOG.debug("Setting [%s] %s = %s", section, key, value)
         ConfigParser.SafeConfigParser.set(self, section, key, value)
         return True
 
@@ -534,12 +498,16 @@ def give_role_to_user(tenants_client, roles_client, users_client, username,
     if not role_ids:
         if role_required:
             raise Exception("required role %s not found" % role_name)
-
+        LOG.debug("%s role not required" % role_name)
+        return
     role_id = role_ids[0]
     try:
         roles_client.create_user_role_on_project(tenant_id, user_id, role_id)
+        LOG.debug("User '%s' was given the '%s' role in project '%s'",
+                  username, role_name, tenant_name)
     except exceptions.Conflict:
-        pass
+        LOG.debug("(no change) User '%s' already has the '%s' role in"
+                  " project '%s'", username, role_name, tenant_name)
 
 
 def create_user_with_tenant(tenants_client, users_client, username,
@@ -548,6 +516,8 @@ def create_user_with_tenant(tenants_client, users_client, username,
 
     Sets password even for existing user.
     """
+    LOG.info("Creating user '%s' with tenant '%s' and password '%s'",
+             username, tenant_name, password)
     tenant_description = "Tenant for Tempest %s user" % username
     email = "%s@test.com" % username
     # create tenant
@@ -555,14 +525,16 @@ def create_user_with_tenant(tenants_client, users_client, username,
         tenants_client.create_tenant(name=tenant_name,
                                      description=tenant_description)
     except exceptions.Conflict:
-        pass  # ignore if exists
-    tenant_id = identity.get_tenant_by_name(tenants_client, tenant_name)['id']
+        LOG.info("(no change) Tenant '%s' already exists", tenant_name)
 
+    tenant_id = identity.get_tenant_by_name(tenants_client, tenant_name)['id']
     # create user
     try:
         users_client.create_user(**{'name': username, 'password': password,
                                     'tenantId': tenant_id, 'email': email})
     except exceptions.Conflict:
+        LOG.info("User '%s' already exists. Setting password to '%s'",
+                 username, password)
         user = identity.get_user_by_username(tenants_client, tenant_id,
                                              username)
         users_client.update_user_password(user['id'], password=password)
@@ -627,18 +599,20 @@ def find_or_create_flavor(client, flavor_id, flavor_name,
                         " an existing flavor" % flavor_name)
 
     if not flavor:
+        LOG.info("Creating flavor '%s'", flavor_name)
         flavor = client.create_flavor(name=flavor_name,
                                       ram=ram, vcpus=vcpus,
                                       disk=disk, id=None)
         return flavor['flavor']['id']
+    else:
+        LOG.info("(no change) Found flavor '%s'", flavor['name'])
 
     return flavor['id']
 
 
 def create_tempest_images(client, conf, image_path, allow_creation,
-                          disk_format):
-    # TODO fix assumption of /etc/...
-    img_path = os.path.join(conf.get("scenario", "img_dir"),
+                          disk_format, tempest_dir):
+    img_path = os.path.join(tempest_dir, conf.get("scenario", "img_dir"),
                             conf.get_defaulted("scenario", "img_file"))
     name = image_path[image_path.rfind('/') + 1:]
     alt_name = name + "_alt"
@@ -672,10 +646,12 @@ def find_or_upload_image(client, image_id, image_name, allow_creation,
                         " an existing image_ref" % image_name)
 
     if image:
+        LOG.info("(no change) Found image '%s'", image['name'])
         path = os.path.abspath(image_dest)
         if not os.path.isfile(path):
             _download_image(client, image['id'], path)
     else:
+        LOG.info("Creating image '%s'", image_name)
         if image_source.startswith("http:") or \
                 image_source.startswith("https:"):
             _download_file(image_source, image_dest)
@@ -694,6 +670,8 @@ def create_tempest_networks(clients, conf, has_neutron, public_network_id):
 
         # if user supplied the network we should use
         if public_network_id:
+            LOG.info("Looking for existing network id: {0}"
+                     "".format(public_network_id))
 
             # check if network exists
             network_list = client.list_networks()
@@ -706,18 +684,19 @@ def create_tempest_networks(clients, conf, has_neutron, public_network_id):
 
         # no network id provided, try to auto discover a public network
         else:
+            LOG.info("No network supplied, trying auto discover for network")
             network_list = client.list_networks()
             for network in network_list['networks']:
                 if network['router:external'] and network['subnets']:
+                    LOG.info("Found network, using: {0}".format(network['id']))
                     public_network_id = network['id']
                     break
 
             # Couldn't find an existing external network
             else:
-                pass
-                # LOG.error("No external networks found. "
-                #           "Please note that any test that relies on external "
-                #           "connectivity would most likely fail.")
+                LOG.error("No external networks found. "
+                          "Please note that any test that relies on external "
+                          "connectivity would most likely fail.")
 
         if public_network_id is not None:
             conf.set('network', 'public_network_id', public_network_id)
@@ -811,6 +790,7 @@ def configure_discovered_services(conf, services):
 
 
 def _download_file(url, destination):
+    LOG.info("Downloading '%s' and saving as '%s'", url, destination)
     f = urllib2.urlopen(url)
     data = f.read()
     with open(destination, "wb") as dest:
@@ -819,13 +799,16 @@ def _download_file(url, destination):
 
 def _download_image(client, id, path):
     """Download file from glance."""
+    LOG.info("Downloading image %s to %s" % (id, path))
     body = client.show_image_file(id)
+    LOG.debug(type(body.data))
     with open(path, 'wb') as out:
         out.write(body.data)
 
 
 def _upload_image(client, name, path, disk_format):
     """Upload image file from `path` into Glance with `name."""
+    LOG.info("Uploading image '%s' from '%s'", name, os.path.abspath(path))
 
     with open(path) as data:
         image = client.create_image(name=name,
