@@ -1,7 +1,6 @@
 #!/usr/bin/python
 
 from ansible.module_utils.basic import *
-from ansible.utils.path import unfrackpath
 
 import ConfigParser
 import logging
@@ -150,6 +149,11 @@ def no_std():
         yield
     finally:
         sys.stdout, sys.stderr = _stdout, _stderr
+
+
+def unfrackpath(path):
+    return os.path.normpath(
+        os.path.realpath(os.path.expanduser(os.path.expandvars(to_bytes(path, errors='surrogate_or_strict')))))
 
 
 def config_tempest(module):
