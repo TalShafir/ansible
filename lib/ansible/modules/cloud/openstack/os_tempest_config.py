@@ -80,7 +80,7 @@ def main():
     module = AnsibleModule(argument_spec={
         "output_path": {"type": "path", "required": True},
         "overrides_file": {"type": "path", "required": False},
-        "defaults_file": {"type": "path", "required": True},
+        "defaults_file": {"type": "path", "required": False},
         "tempest_dir": {"type": "path", "required": True},
         "deployer_input": {"type": "path", "required": False},
         "overrides": {"type": "list", "required": False},
@@ -767,7 +767,7 @@ def config_tempest(module):
 
     try:
         conf = TempestConf()
-        if os.path.isfile(module.params["defaults_file"]):
+        if module.params["defaults_file"] and os.path.isfile(module.params["defaults_file"]):
             LOG.info("Reading defaults from file '%s'", module.params["defaults_file"])
             conf.read(module.params["defaults_file"])
         if module.params["deployer_input"] and os.path.isfile(module.params["deployer_input"]):
