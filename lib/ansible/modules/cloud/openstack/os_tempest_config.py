@@ -10,23 +10,6 @@ import shutil
 import sys
 import urllib2
 
-# from tempest.common import api_discovery
-# from tempest.common import identity
-# import tempest.config
-# from tempest.lib import auth
-# from tempest.lib import exceptions
-# from tempest.lib.services.compute import flavors_client
-# from tempest.lib.services.compute import networks_client as nova_net_client
-# from tempest.lib.services.compute import servers_client
-# from tempest.lib.services.identity.v2 import identity_client
-# from tempest.lib.services.identity.v2 import roles_client
-# from tempest.lib.services.identity.v2 import tenants_client
-# from tempest.lib.services.identity.v2 import users_client
-# from tempest.lib.services.identity.v3 \
-#     import identity_client as identity_v3_client
-# from tempest.lib.services.image.v2 import images_client
-# from tempest.lib.services.network import networks_client
-
 from contextlib import contextmanager
 
 DOCUMENTATION = '''
@@ -91,7 +74,7 @@ SERVICE_EXTENSION_KEY = {
 }
 
 
-# TODO test with virtualenv
+# TODO change overrides argument to be string in a format
 
 def main():
     module = AnsibleModule(argument_spec={
@@ -110,7 +93,7 @@ def main():
         "virtualenv": {"type": "path", "required": False},
     })
     # search depending on where Tempest is installed
-    sys.path.insert(0, unfrackpath(module.params["tempest_dir"]))
+    # sys.path.insert(0, unfrackpath(module.params["tempest_dir"]))
 
     if module.params["create"] and not module.params["admin_cred"]:
         module.fail_json(msg="Cannot use 'create' param without 'admin_cred' param as True")
@@ -860,9 +843,7 @@ def config_tempest(module):
 
 
 # API_DISCOVERY -------------------------------------
-
 import json
-import logging
 import re
 import requests
 import urllib3
