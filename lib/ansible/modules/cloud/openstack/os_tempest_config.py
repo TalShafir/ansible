@@ -15,7 +15,7 @@ DOCUMENTATION = '''
 ---
 module: os_tempest_config
 short_description: configs Tempest (OpenStack)
-description:
+description: derived from Red Hat's config_tempest.py script and Red Hat's Tempest api_discovery.py script
     -
 author: "Tal Shafir , @TalShafir"
 requirements:
@@ -27,8 +27,85 @@ options:
             if not provided will be assumed Tempest is installed in /usr/bin
         required: False
         default: ''
-'''
 
+    tempest_dir:
+        description:
+            -The path to the tempest dir
+        required: True
+
+    overrides_file:
+        description:
+            -path for a file containing overrides values in the format section.option=value
+            -where section is a section header in the configuration file.
+        required: False
+        default: ''
+
+    deployer_input:
+        description:
+            -path for a file in the format of Tempest's configuration file that will override the default values.
+            -The deployer-input file is an alternative to providing key/value pairs.
+            -If there are also key/value pairs they will be applied after the deployer-input file.
+        required: False
+        default: ''
+
+    defaults_file:
+        description:
+            -a path for a defaults file that will be provided by the distributor of the tempest code,
+            -a distro for example,to specify defaults that are different than the generic defaults for tempest.
+        required: False
+        default: ''
+
+    overrides:
+        description: TODO
+            -key value pairs to modify. The key is section.key=value where section is a section header in the configuration file.
+        required: False
+        default: ''
+
+    create:
+        description:
+            -When C(True) create default tempest resources
+        required: False
+        default: False
+
+    admin_cred:
+        description:
+            -When C(True) Run with admin creds
+        required: False
+        default: False
+
+    use_test_accounts:
+        description:
+            -When C(True) use accounts from accounts.yaml
+        required: False
+        default: False
+
+    image_disk_format:
+        description:
+            -a format of an image to be uploaded to glance
+        required: False
+        default: 'qcow2'
+
+    image:
+        description:
+            -an image to be uploaded to glance. The name of the image is the leaf name of the path which can be either a filename or url.
+        required: False
+        default: "http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img"
+
+    network_id:
+        description:
+            -The ID of an existing network in our OpenStack instance with external connectivity
+        required: False
+        default: ''
+    log_file:
+        description:
+            -If given  will write all the log info to the given file.
+        required: False
+        default: os's /dev/null
+'''
+EXAMPLES = '''
+
+'''
+# TODO handle 'No module named tests.tempest.plugin' error
 LOG = logging.getLogger(__name__)
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 
@@ -78,9 +155,9 @@ SERVICE_EXTENSION_KEY = {
 def main():
     module = AnsibleModule(argument_spec={
         "output_path": {"type": "path", "required": True},
+        "tempest_dir": {"type": "path", "required": True},
         "overrides_file": {"type": "path", "required": False},
         "defaults_file": {"type": "path", "required": False},
-        "tempest_dir": {"type": "path", "required": True},
         "deployer_input": {"type": "path", "required": False},
         "overrides": {"type": "list", "required": False},
         "create": {"type": "bool", "required": False, "default": False},
@@ -90,7 +167,9 @@ def main():
         "image": {"type": "str", "required": False, "default": DEFAULT_IMAGE},
         "network_id": {"type": "str", "required": False},
         "virtualenv": {"type": "path", "required": False},
+        "log_file": {"type": "path", "required": False},  # TODO use
     })
+    # module.exit_json()
     # search depending on where Tempest is installed
     # sys.path.insert(0, unfrackpath(module.params["tempest_dir"]))
 
@@ -355,18 +434,22 @@ def config_tempest(module):
                 conf.set('identity', 'admin_tenant_id', tenant_id)
 
     class TempestConf(ConfigParser.SafeConfigParser):
-        # causes the config parser to preserve case of the options
-        optionxform = str
 
-        # set of pairs `(section, key)` which have a higher priority (are
-        # user-defined) and will usually not be overwritten by `set()`
-        priority_sectionkeys = set()
+        def __init__(self, log_file=os.devnull):
+            ConfigParser.SafeConfigParser.__init__(self)
+            # causes the config parser to preserve case of the options
+            self.optionxform = str
 
-        # disable logging TODO find a better way
-        tempest.config._CONF.log_dir, tempest.config._CONF.log_file = os.path.split(os.devnull)
-        tempest.config._CONF.use_stderr = False
+            # set of pairs `(section, key)` which have a higher priority (are
+            # user-defined) and will usually not be overwritten by `set()`
+            self.priority_sectionkeys = set()
 
-        CONF = tempest.config.TempestConfigPrivate(parse_conf=False)
+            # disable logging TODO find a better way
+
+            tempest.config._CONF.log_dir, tempest.config._CONF.log_file = os.path.split(log_file)
+            tempest.config._CONF.use_stderr = False
+
+            self.CONF = tempest.config.TempestConfigPrivate(parse_conf=False)
 
         def get_bool_value(self, value):
             strval = str(value).lower()
@@ -770,7 +853,7 @@ def config_tempest(module):
             return None
 
     try:
-        conf = TempestConf()
+        conf = TempestConf(unfrackpath(module.params["log_file"]))
         if module.params["defaults_file"] and os.path.isfile(module.params["defaults_file"]):
             LOG.info("Reading defaults from file '%s'", module.params["defaults_file"])
             conf.read(module.params["defaults_file"])
