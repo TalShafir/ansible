@@ -121,7 +121,7 @@ def main():
         from tempest.lib.services.image.v2 import images_client
         from tempest.lib.services.network import networks_client
     except ImportError as e:
-        module.fail_json(msg="Couldn't import tempest", err=e)
+        module.fail_json(msg="Couldn't import tempest", err=str(e))
 
     config_tempest(module)
 
@@ -786,6 +786,21 @@ def config_tempest(module):
         if module.params["overrides"]:
             for section, key, value in parse_overrides(module.params["overrides"]):
                 conf.set(section, key, value, priority=True)
+
+        # validate necessary settings are being given
+        if module.params["admin_cred"]:
+            if not conf.has_option("identity", "admin_username"):
+                module.fail_json(
+                    msg="the 'admin_cred' option require 'admin_username' to be provided by the user or as a default")
+            if not conf.has_option("identity", "admin_tenant_name"):
+                module.fail_json(
+                    msg="the 'admin_cred' option require 'admin_tenant_name' to be provided by the user or as a default")
+            if not conf.has_option("identity", "admin_password"):
+                module.fail_json(
+                    msg="the 'admin_cred' option require 'admin_password' to be provided by the user or as a default")
+        if not conf.has_option("identity", "uri"):
+            module.fail_json(msg="the identity.uri setting must be provided")
+
         uri = conf.get("identity", "uri")
         api_version = 2
         v3_only = False
