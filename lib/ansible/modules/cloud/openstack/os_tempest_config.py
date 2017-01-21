@@ -105,8 +105,6 @@ options:
 EXAMPLES = '''
 
 '''
-# TODO handle 'No module named tests.tempest.plugin' error
-# TODO write better the imports
 
 LOG = logging.getLogger(__name__)
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -152,6 +150,8 @@ SERVICE_EXTENSION_KEY = {
 }
 
 
+# TODO handle 'No module named tests.tempest.plugin' error
+# TODO write better the imports
 # TODO change overrides argument to be string in a format
 
 def main():
@@ -169,7 +169,7 @@ def main():
         "image": {"type": "str", "required": False, "default": DEFAULT_IMAGE},
         "network_id": {"type": "str", "required": False},
         "virtualenv": {"type": "path", "required": False},
-        "log_file": {"type": "path", "required": False},  # TODO use
+        "log_file": {"type": "path", "required": False},
     })
 
     # search depending on where Tempest is installed
