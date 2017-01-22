@@ -11,6 +11,38 @@ import urllib2
 
 from contextlib import contextmanager
 
+try:
+    import tempest.config
+    from tempest.lib import auth
+    from tempest.lib.services.compute import flavors_client
+    from tempest.lib.services.compute import networks_client as nova_net_client
+    from tempest.lib.services.compute import servers_client
+    from tempest.lib.services.identity.v2 import identity_client
+    from tempest.lib.services.identity.v2 import roles_client
+    from tempest.lib.services.identity.v2 import tenants_client
+    from tempest.lib.services.identity.v2 import users_client
+    from tempest.lib.services.identity.v3 \
+        import identity_client as identity_v3_client
+    from tempest.lib.services.image.v2 import images_client
+    from tempest.lib.services.network import networks_client
+    from tempest.common import identity
+
+    HAS_TEMPEST = True
+except ImportError:
+    HAS_TEMPEST = False
+
+import json
+import re
+import urlparse
+
+try:
+    import urllib3
+    import requests
+
+    HAS_URL = True
+except ImportError:
+    HAS_URL = True
+
 DOCUMENTATION = '''
 ---
 module: os_tempest_config
@@ -18,15 +50,16 @@ short_description: configs Tempest (OpenStack)
 description: derived from Red Hat's config_tempest.py script and Red Hat's Tempest api_discovery.py script
     -
 author: "Tal Shafir , @TalShafir"
-requirements:
+requirements: ["tempest", "urllib3 >= 1.15", "requests"]
     -
 options:
-    virtualenv:
-        description:
-            -path to the virtual environment Tempest is installed at,
-            if not provided will be assumed Tempest is installed in /usr/bin
-        required: False
-        default: ''
+    # TODO probably remove
+    # virtualenv:
+    #     description:
+    #         -path to the virtual environment Tempest is installed at,
+    #         if not provided will be assumed Tempest is installed in /usr/bin
+    #     required: False
+    #     default: ''
 
     tempest_dir:
         description:
@@ -168,29 +201,30 @@ def main():
         "image_disk_format": {"type": "str", "required": False, "default": DEFAULT_IMAGE_FORMAT},
         "image": {"type": "str", "required": False, "default": DEFAULT_IMAGE},
         "network_id": {"type": "str", "required": False},
-        "virtualenv": {"type": "path", "required": False},
+        # "virtualenv": {"type": "path", "required": False},
         "log_file": {"type": "path", "required": False},
     })
-
     # search depending on where Tempest is installed
     sys.path.insert(0, unfrackpath(module.params["tempest_dir"]))
-
     if module.params["create"] and not module.params["admin_cred"]:
         module.fail_json(msg="Cannot use 'create' param without 'admin_cred' param as True")
     if module.params["deployer_input"] and not os.path.isfile(unfrackpath(module.params["deployer_input"])):
         module.fail_json(msg="the deployer_input file is not a file")
-    if module.params["virtualenv"]:
-        if os.path.isdir(unfrackpath(module.params["virtualenv"])):
-            activate_virtual_environment(unfrackpath(module.params["virtualenv"]))
-        else:
-            module.fail_json(msg="the given virtualenv is not a valid directory",
-                             path=unfrackpath(module.params["virtualenv"]))
-    has_tempest, err = validate_tempest()
-    if not has_tempest:
-        module.fail_json(msg="Couldn't import tempest", err=err)
+    # if module.params["virtualenv"]:
+    #     if os.path.isdir(unfrackpath(module.params["virtualenv"])):
+    #         activate_virtual_environment(unfrackpath(module.params["virtualenv"]))
+    #     else:
+    #         module.fail_json(msg="the given virtualenv is not a valid directory",
+    #                          path=unfrackpath(module.params["virtualenv"]))
+
+    if not HAS_TEMPEST:
+        module.fail_json(msg="Failed to import Tempest")
+    if not HAS_URL:
+        module.fail_json(msg="Failed to import urllib3 or requests")
 
     try:
-        conf = createTempestConf(unfrackpath(module.params["log_file"]))
+
+        conf = TempestConf(unfrackpath(module.params["log_file"]))
 
         if module.params["defaults_file"] and os.path.isfile(module.params["defaults_file"]):
             LOG.info("Reading defaults from file '%s'", module.params["defaults_file"])
@@ -240,7 +274,8 @@ def main():
             conf.set("auth", "allow_tenant_isolation", "False")
         if module.params["use_test_accounts"]:
             conf.set("auth", "allow_tenant_isolation", "True")
-        clients = createClientManager(conf, module.params["admin_cred"])
+
+        clients = ClientManager(conf, module.params["admin_cred"])
 
         swift_discover = conf.get_defaulted('object-storage-feature-enabled',
                                             'discoverability')
@@ -285,40 +320,18 @@ def main():
         module.fail_json(msg=str(error))
 
 
-def validate_tempest():
-    try:
-        from tempest.common import identity
-        import tempest.config
-        from tempest.lib import auth
-        from tempest.lib import exceptions
-        from tempest.lib.services.compute import flavors_client
-        from tempest.lib.services.compute import networks_client as nova_net_client
-        from tempest.lib.services.compute import servers_client
-        from tempest.lib.services.identity.v2 import identity_client
-        from tempest.lib.services.identity.v2 import roles_client
-        from tempest.lib.services.identity.v2 import tenants_client
-        from tempest.lib.services.identity.v2 import users_client
-        from tempest.lib.services.identity.v3 \
-            import identity_client as identity_v3_client
-        from tempest.lib.services.image.v2 import images_client
-        from tempest.lib.services.network import networks_client
-        return True, ""
-    except ImportError as e:
-        return False, str(e)
-
-
-def activate_virtual_environment(environment_path):
-    """
-        Activate the python virtual environment in the given path
-        :param environment_path: A path to the python virtual environment
-        :type environment_path: str
-        """
-    activation_script_suffix = '/bin/activate_this.py'
-    activate_venv = environment_path + activation_script_suffix
-    if sys.version_info[0] == 3:
-        exec (compile(open(activate_venv, "rb").read(), activate_venv, 'exec'))
-    else:
-        execfile(activate_venv, dict(__file__=activate_venv))
+# def activate_virtual_environment(environment_path):
+#     """
+#         Activate the python virtual environment in the given path
+#         :param environment_path: A path to the python virtual environment
+#         :type environment_path: str
+#         """
+#     activation_script_suffix = '/bin/activate_this.py'
+#     activate_venv = environment_path + activation_script_suffix
+#     if sys.version_info[0] == 3:
+#         exec (compile(open(activate_venv, "rb").read(), activate_venv, 'exec'))
+#     else:
+#         execfile(activate_venv, dict(__file__=activate_venv))
 
 
 @contextmanager
@@ -360,181 +373,165 @@ def parse_overrides(overrides):
     return new_overrides
 
 
-def createClientManager(conf, admin):
-    from tempest.lib import auth
-    from tempest.lib.services.compute import flavors_client
-    from tempest.lib.services.compute import networks_client as nova_net_client
-    from tempest.lib.services.compute import servers_client
-    from tempest.lib.services.identity.v2 import identity_client
-    from tempest.lib.services.identity.v2 import roles_client
-    from tempest.lib.services.identity.v2 import tenants_client
-    from tempest.lib.services.identity.v2 import users_client
-    from tempest.lib.services.identity.v3 \
-        import identity_client as identity_v3_client
-    from tempest.lib.services.image.v2 import images_client
-    from tempest.lib.services.network import networks_client
-    from tempest.common import identity
+class ClientManager(object):
+    """Manager of various OpenStack API clients.
 
-    class ClientManager(object):
-        """Manager of various OpenStack API clients.
+    Connections to clients are created on-demand, i.e. the client tries to
+    connect to the server only when it's being requested.
+    """
 
-        Connections to clients are created on-demand, i.e. the client tries to
-        connect to the server only when it's being requested.
-        """
-
-        def get_credentials(self, conf, username, tenant_name, password,
-                            identity_version='v2'):
-            creds_kwargs = {'username': username,
-                            'password': password}
-            if identity_version == 'v3':
-                creds_kwargs.update({'project_name': tenant_name,
-                                     'domain_name': 'Default',
-                                     'user_domain_name': 'Default'})
-            else:
-                creds_kwargs.update({'tenant_name': tenant_name})
-            return auth.get_credentials(
-                auth_url=None,
-                fill_in=False,
-                identity_version=identity_version,
-                disable_ssl_certificate_validation=conf.get_defaulted(
-                    'identity',
-                    'disable_ssl_certificate_validation'),
-                ca_certs=conf.get_defaulted(
-                    'identity',
-                    'ca_certificates_file'),
-                **creds_kwargs)
-
-        def get_auth_provider(self, conf, credentials):
-            disable_ssl_certificate_validation = conf.get_defaulted(
+    def get_credentials(self, conf, username, tenant_name, password,
+                        identity_version='v2'):
+        creds_kwargs = {'username': username,
+                        'password': password}
+        if identity_version == 'v3':
+            creds_kwargs.update({'project_name': tenant_name,
+                                 'domain_name': 'Default',
+                                 'user_domain_name': 'Default'})
+        else:
+            creds_kwargs.update({'tenant_name': tenant_name})
+        return auth.get_credentials(
+            auth_url=None,
+            fill_in=False,
+            identity_version=identity_version,
+            disable_ssl_certificate_validation=conf.get_defaulted(
                 'identity',
-                'disable_ssl_certificate_validation')
-            ca_certs = conf.get_defaulted(
+                'disable_ssl_certificate_validation'),
+            ca_certs=conf.get_defaulted(
                 'identity',
-                'ca_certificates_file')
-            if isinstance(credentials, auth.KeystoneV3Credentials):
-                return auth.KeystoneV3AuthProvider(
-                    credentials, conf.get_defaulted('identity', 'uri_v3'),
-                    disable_ssl_certificate_validation,
-                    ca_certs)
-            else:
-                return auth.KeystoneV2AuthProvider(
-                    credentials, conf.get_defaulted('identity', 'uri'),
-                    disable_ssl_certificate_validation,
-                    ca_certs)
+                'ca_certificates_file'),
+            **creds_kwargs)
 
-        def get_identity_version(self, conf):
-            if "v3" in conf.get("identity", "uri"):
-                return "v3"
-            else:
-                return "v2"
+    def get_auth_provider(self, conf, credentials):
+        disable_ssl_certificate_validation = conf.get_defaulted(
+            'identity',
+            'disable_ssl_certificate_validation')
+        ca_certs = conf.get_defaulted(
+            'identity',
+            'ca_certificates_file')
+        if isinstance(credentials, auth.KeystoneV3Credentials):
+            return auth.KeystoneV3AuthProvider(
+                credentials, conf.get_defaulted('identity', 'uri_v3'),
+                disable_ssl_certificate_validation,
+                ca_certs)
+        else:
+            return auth.KeystoneV2AuthProvider(
+                credentials, conf.get_defaulted('identity', 'uri'),
+                disable_ssl_certificate_validation,
+                ca_certs)
 
-        def __init__(self, conf, admin):
-            self.identity_version = self.get_identity_version(conf)
-            if admin:
-                username = conf.get_defaulted('identity', 'admin_username')
-                password = conf.get_defaulted('identity', 'admin_password')
-                tenant_name = conf.get_defaulted('identity', 'admin_tenant_name')
-            else:
-                username = conf.get_defaulted('identity', 'username')
-                password = conf.get_defaulted('identity', 'password')
-                tenant_name = conf.get_defaulted('identity', 'tenant_name')
+    def get_identity_version(self, conf):
+        if "v3" in conf.get("identity", "uri"):
+            return "v3"
+        else:
+            return "v2"
 
-            self.identity_region = conf.get_defaulted('identity', 'region')
-            default_params = {
-                'disable_ssl_certificate_validation':
-                    conf.get_defaulted('identity',
-                                       'disable_ssl_certificate_validation'),
-                'ca_certs': conf.get_defaulted('identity', 'ca_certificates_file')
-            }
-            compute_params = {
-                'service': conf.get_defaulted('compute', 'catalog_type'),
-                'region': self.identity_region,
-                'endpoint_type': conf.get_defaulted('compute', 'endpoint_type')
-            }
-            compute_params.update(default_params)
+    def __init__(self, conf, admin):
 
-            if self.identity_version == "v2":
-                _creds = self.get_credentials(conf, username, tenant_name,
-                                              password)
-            else:
-                _creds = self.get_credentials(
-                    conf, username, tenant_name, password,
-                    identity_version=self.identity_version)
+        self.identity_version = self.get_identity_version(conf)
+        if admin:
+            username = conf.get_defaulted('identity', 'admin_username')
+            password = conf.get_defaulted('identity', 'admin_password')
+            tenant_name = conf.get_defaulted('identity', 'admin_tenant_name')
+        else:
+            username = conf.get_defaulted('identity', 'username')
+            password = conf.get_defaulted('identity', 'password')
+            tenant_name = conf.get_defaulted('identity', 'tenant_name')
 
-            _auth = self.get_auth_provider(conf, _creds)
-            self.auth_provider = _auth
+        self.identity_region = conf.get_defaulted('identity', 'region')
+        default_params = {
+            'disable_ssl_certificate_validation':
+                conf.get_defaulted('identity',
+                                   'disable_ssl_certificate_validation'),
+            'ca_certs': conf.get_defaulted('identity', 'ca_certificates_file')
+        }
+        compute_params = {
+            'service': conf.get_defaulted('compute', 'catalog_type'),
+            'region': self.identity_region,
+            'endpoint_type': conf.get_defaulted('compute', 'endpoint_type')
+        }
+        compute_params.update(default_params)
 
-            if "v2.0" in conf.get("identity", "uri"):
-                self.identity = identity_client.IdentityClient(
-                    _auth, conf.get_defaulted('identity', 'catalog_type'),
-                    self.identity_region, endpoint_type='adminURL',
+        if self.identity_version == "v2":
+            _creds = self.get_credentials(conf, username, tenant_name,
+                                          password)
+        else:
+            _creds = self.get_credentials(
+                conf, username, tenant_name, password,
+                identity_version=self.identity_version)
+
+        _auth = self.get_auth_provider(conf, _creds)
+        self.auth_provider = _auth
+
+        if "v2.0" in conf.get("identity", "uri"):
+            self.identity = identity_client.IdentityClient(
+                _auth, conf.get_defaulted('identity', 'catalog_type'),
+                self.identity_region, endpoint_type='adminURL',
+                **default_params)
+        else:
+            self.identity = identity_v3_client.IdentityV3Client(
+                _auth, conf.get_defaulted('identity', 'catalog_type'),
+                self.identity_region, endpoint_type='adminURL',
+                **default_params)
+
+        self.tenants = tenants_client.TenantsClient(
+            _auth,
+            conf.get_defaulted('identity', 'catalog_type'),
+            self.identity_region,
+            endpoint_type='adminURL',
+            **default_params)
+
+        self.roles = roles_client.RolesClient(
+            _auth,
+            conf.get_defaulted('identity', 'catalog_type'),
+            self.identity_region,
+            endpoint_type='adminURL',
+            **default_params)
+
+        self.users = users_client.UsersClient(
+            _auth,
+            conf.get_defaulted('identity', 'catalog_type'),
+            self.identity_region,
+            endpoint_type='adminURL',
+            **default_params)
+
+        self.images = images_client.ImagesClient(
+            _auth,
+            conf.get_defaulted('image', 'catalog_type'),
+            self.identity_region,
+            **default_params)
+        self.servers = servers_client.ServersClient(_auth,
+                                                    **compute_params)
+        self.flavors = flavors_client.FlavorsClient(_auth,
+                                                    **compute_params)
+
+        self.networks = None
+
+        def create_nova_network_client():
+            if self.networks is None:
+                self.networks = nova_net_client.NetworksClient(
+                    _auth, **compute_params)
+            return self.networks
+
+        def create_neutron_client():
+            if self.networks is None:
+                self.networks = networks_client.NetworksClient(
+                    _auth,
+                    conf.get_defaulted('network', 'catalog_type'),
+                    self.identity_region,
+                    endpoint_type=conf.get_defaulted('network',
+                                                     'endpoint_type'),
                     **default_params)
-            else:
-                self.identity = identity_v3_client.IdentityV3Client(
-                    _auth, conf.get_defaulted('identity', 'catalog_type'),
-                    self.identity_region, endpoint_type='adminURL',
-                    **default_params)
+            return self.networks
 
-            self.tenants = tenants_client.TenantsClient(
-                _auth,
-                conf.get_defaulted('identity', 'catalog_type'),
-                self.identity_region,
-                endpoint_type='adminURL',
-                **default_params)
+        self.get_nova_net_client = create_nova_network_client
+        self.get_neutron_client = create_neutron_client
 
-            self.roles = roles_client.RolesClient(
-                _auth,
-                conf.get_defaulted('identity', 'catalog_type'),
-                self.identity_region,
-                endpoint_type='adminURL',
-                **default_params)
-
-            self.users = users_client.UsersClient(
-                _auth,
-                conf.get_defaulted('identity', 'catalog_type'),
-                self.identity_region,
-                endpoint_type='adminURL',
-                **default_params)
-
-            self.images = images_client.ImagesClient(
-                _auth,
-                conf.get_defaulted('image', 'catalog_type'),
-                self.identity_region,
-                **default_params)
-            self.servers = servers_client.ServersClient(_auth,
-                                                        **compute_params)
-            self.flavors = flavors_client.FlavorsClient(_auth,
-                                                        **compute_params)
-
-            self.networks = None
-
-            def create_nova_network_client():
-                if self.networks is None:
-                    self.networks = nova_net_client.NetworksClient(
-                        _auth, **compute_params)
-                return self.networks
-
-            def create_neutron_client():
-                if self.networks is None:
-                    self.networks = networks_client.NetworksClient(
-                        _auth,
-                        conf.get_defaulted('network', 'catalog_type'),
-                        self.identity_region,
-                        endpoint_type=conf.get_defaulted('network',
-                                                         'endpoint_type'),
-                        **default_params)
-                return self.networks
-
-            self.get_nova_net_client = create_nova_network_client
-            self.get_neutron_client = create_neutron_client
-
-            # Set admin tenant id needed for keystone v3 tests.
-            if admin:
-                tenant_id = identity.get_tenant_by_name(self.tenants,
-                                                        tenant_name)['id']
-                conf.set('identity', 'admin_tenant_id', tenant_id)
-
-    return ClientManager(conf, admin)
+        # Set admin tenant id needed for keystone v3 tests.
+        if admin:
+            tenant_id = identity.get_tenant_by_name(self.tenants,
+                                                    tenant_name)['id']
+            conf.set('identity', 'admin_tenant_id', tenant_id)
 
 
 def create_tempest_users(tenants_client, roles_client, users_client, conf,
@@ -921,75 +918,64 @@ def _find_image(client, image_id, image_name):
         return None
 
 
-def createTempestConf(log_file):
-    import tempest.config
+class TempestConf(ConfigParser.SafeConfigParser):
+    def __init__(self, log_file=os.devnull):
+        ConfigParser.SafeConfigParser.__init__(self)
+        # causes the config parser to preserve case of the options
+        self.optionxform = str
 
-    class TempestConf(ConfigParser.SafeConfigParser):
+        # set of pairs `(section, key)` which have a higher priority (are
+        # user-defined) and will usually not be overwritten by `set()`
+        self.priority_sectionkeys = set()
 
-        def __init__(self, log_file=os.devnull):
-            ConfigParser.SafeConfigParser.__init__(self)
-            # causes the config parser to preserve case of the options
-            self.optionxform = str
+        # disable logging TODO find a better way
 
-            # set of pairs `(section, key)` which have a higher priority (are
-            # user-defined) and will usually not be overwritten by `set()`
-            self.priority_sectionkeys = set()
+        tempest.config._CONF.log_dir, tempest.config._CONF.log_file = os.path.split(log_file)
+        tempest.config._CONF.use_stderr = False
+        self.CONF = tempest.config.TempestConfigPrivate(parse_conf=False)
 
-            # disable logging TODO find a better way
-
-            tempest.config._CONF.log_dir, tempest.config._CONF.log_file = os.path.split(log_file)
-            tempest.config._CONF.use_stderr = False
-            self.CONF = tempest.config.TempestConfigPrivate(parse_conf=False)
-
-        def get_bool_value(self, value):
-            strval = str(value).lower()
-            if strval == 'true':
-                return True
-            elif strval == 'false':
-                return False
-            else:
-                raise ValueError("'%s' is not a boolean" % value)
-
-        def get_defaulted(self, section, key):
-            if self.has_option(section, key):
-                return self.get(section, key)
-            else:
-                return self.CONF.get(section).get(key)
-
-        def set(self, section, key, value, priority=False):
-            """Set value in configuration, similar to `SafeConfigParser.set`
-
-            Creates non-existent sections. Keeps track of options which were
-            specified by the user and should not be normally overwritten.
-
-            :param priority: if True, always over-write the value. If False, don't
-                over-write an existing value if it was written before with a
-                priority (i.e. if it was specified by the user)
-            :returns: True if the value was written, False if not (because of
-                priority)
-            """
-            if not self.has_section(section) and section.lower() != "default":
-                self.add_section(section)
-            if not priority and (section, key) in self.priority_sectionkeys:
-                LOG.debug("Option '[%s] %s = %s' was defined by user, NOT"
-                          " overwriting into value '%s'", section, key,
-                          self.get(section, key), value)
-                return False
-            if priority:
-                self.priority_sectionkeys.add((section, key))
-            LOG.debug("Setting [%s] %s = %s", section, key, value)
-            ConfigParser.SafeConfigParser.set(self, section, key, value)
+    def get_bool_value(self, value):
+        strval = str(value).lower()
+        if strval == 'true':
             return True
+        elif strval == 'false':
+            return False
+        else:
+            raise ValueError("'%s' is not a boolean" % value)
 
-    return TempestConf(log_file)
+    def get_defaulted(self, section, key):
+        if self.has_option(section, key):
+            return self.get(section, key)
+        else:
+            return self.CONF.get(section).get(key)
+
+    def set(self, section, key, value, priority=False):
+        """Set value in configuration, similar to `SafeConfigParser.set`
+
+        Creates non-existent sections. Keeps track of options which were
+        specified by the user and should not be normally overwritten.
+
+        :param priority: if True, always over-write the value. If False, don't
+            over-write an existing value if it was written before with a
+            priority (i.e. if it was specified by the user)
+        :returns: True if the value was written, False if not (because of
+            priority)
+        """
+        if not self.has_section(section) and section.lower() != "default":
+            self.add_section(section)
+        if not priority and (section, key) in self.priority_sectionkeys:
+            LOG.debug("Option '[%s] %s = %s' was defined by user, NOT"
+                      " overwriting into value '%s'", section, key,
+                      self.get(section, key), value)
+            return False
+        if priority:
+            self.priority_sectionkeys.add((section, key))
+        LOG.debug("Setting [%s] %s = %s", section, key, value)
+        ConfigParser.SafeConfigParser.set(self, section, key, value)
+        return True
 
 
 # API_DISCOVERY -------------------------------------
-import json
-import re
-import requests
-import urllib3
-import urlparse
 
 MULTIPLE_SLASH = re.compile(r'/+')
 
@@ -1006,6 +992,7 @@ class Service(object):
         self.disable_ssl_validation = disable_ssl_validation
 
     def do_get(self, url, top_level=False, top_level_path=""):
+
         parts = list(urlparse.urlparse(url))
         # 2 is the path offset
         if top_level:
