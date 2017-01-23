@@ -14,6 +14,7 @@ from contextlib import contextmanager
 try:
     import tempest.config
     from tempest.lib import auth
+    from tempest.lib import exceptions
     from tempest.lib.services.compute import flavors_client
     from tempest.lib.services.compute import networks_client as nova_net_client
     from tempest.lib.services.compute import servers_client
@@ -296,7 +297,8 @@ def main():
 
         create_tempest_flavors(clients.flavors, conf, module.params["create"])
         create_tempest_images(clients.images, conf, module.params["image"], module.params["create"],
-                              module.params["image_disk_format"], unfrackpath(module.params["tempest_dir"]))
+                              module.params["image_disk_format"], unfrackpath(
+                module.params["tempest_dir"]))  # TODO try to replace tempest_dir with custom image folder
         has_neutron = "network" in services
 
         LOG.info("Setting up network")
@@ -565,8 +567,6 @@ def create_tempest_users(tenants_client, roles_client, users_client, conf,
 def give_role_to_user(tenants_client, roles_client, users_client, username,
                       tenant_name, role_name, role_required=True):
     """Give the user a role in the project (tenant).""",
-    from tempest.lib import exceptions
-    from tempest.common import identity
 
     tenant_id = identity.get_tenant_by_name(tenants_client, tenant_name)['id']
     users = users_client.list_users()
@@ -595,9 +595,6 @@ def create_user_with_tenant(tenants_client, users_client, username,
 
     Sets password even for existing user.
     """
-    from tempest.lib import exceptions
-    from tempest.common import identity
-
     LOG.info("Creating user '%s' with tenant '%s' and password '%s'",
              username, tenant_name, password)
     tenant_description = "Tenant for Tempest %s user" % username
@@ -903,7 +900,6 @@ def _upload_image(client, name, path, disk_format):
 
 def _find_image(client, image_id, image_name):
     """Find image by ID or name (the image client doesn't have this)."""
-    from tempest.lib import exceptions
 
     if image_id:
         try:
