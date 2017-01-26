@@ -54,14 +54,6 @@ author: "Tal Shafir , @TalShafir"
 requirements: ["tempest", "urllib3 >= 1.15", "requests"]
     -
 options:
-    # TODO probably remove
-    # virtualenv:
-    #     description:
-    #         -path to the virtual environment Tempest is installed at,
-    #         if not provided will be assumed Tempest is installed in /usr/bin
-    #     required: False
-    #     default: ''
-
     tempest_dir:
         description:
             -The path to the tempest dir
@@ -136,6 +128,7 @@ options:
         required: False
         default: os's /dev/null
 '''
+
 EXAMPLES = '''
 
 '''
@@ -202,7 +195,6 @@ def main():
         "image_disk_format": {"type": "str", "required": False, "default": DEFAULT_IMAGE_FORMAT},
         "image": {"type": "str", "required": False, "default": DEFAULT_IMAGE},
         "network_id": {"type": "str", "required": False},
-        # "virtualenv": {"type": "path", "required": False},
         "log_file": {"type": "path", "required": False},
     })
     # search depending on where Tempest is installed
@@ -211,12 +203,6 @@ def main():
         module.fail_json(msg="Cannot use 'create' param without 'admin_cred' param as True")
     if module.params["deployer_input"] and not os.path.isfile(unfrackpath(module.params["deployer_input"])):
         module.fail_json(msg="the deployer_input file is not a file")
-    # if module.params["virtualenv"]:
-    #     if os.path.isdir(unfrackpath(module.params["virtualenv"])):
-    #         activate_virtual_environment(unfrackpath(module.params["virtualenv"]))
-    #     else:
-    #         module.fail_json(msg="the given virtualenv is not a valid directory",
-    #                          path=unfrackpath(module.params["virtualenv"]))
 
     if not HAS_TEMPEST:
         module.fail_json(msg="Failed to import Tempest")
@@ -320,20 +306,6 @@ def main():
                          config_path=unfrackpath(module.params["output_path"]))
     except Exception as error:
         module.fail_json(msg=str(error))
-
-
-# def activate_virtual_environment(environment_path):
-#     """
-#         Activate the python virtual environment in the given path
-#         :param environment_path: A path to the python virtual environment
-#         :type environment_path: str
-#         """
-#     activation_script_suffix = '/bin/activate_this.py'
-#     activate_venv = environment_path + activation_script_suffix
-#     if sys.version_info[0] == 3:
-#         exec (compile(open(activate_venv, "rb").read(), activate_venv, 'exec'))
-#     else:
-#         execfile(activate_venv, dict(__file__=activate_venv))
 
 
 @contextmanager
