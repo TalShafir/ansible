@@ -177,25 +177,23 @@ SERVICE_EXTENSION_KEY = {
 }
 
 
-# TODO handle 'No module named tests.tempest.plugin' error
-# TODO write better the imports
 # TODO change overrides argument to be string in a format
 
 def main():
     module = AnsibleModule(argument_spec={
         "output_path": {"type": "path", "required": True},
-        "tempest_dir": {"type": "path", "required": True},
-        "overrides_file": {"type": "path", "required": False},
-        "defaults_file": {"type": "path", "required": False},
-        "deployer_input": {"type": "path", "required": False},
-        "overrides": {"type": "list", "required": False},
+        "tempest_dir": {"type": "path", "required": True},  # TODO check if really required
+        "overrides_file": {"type": "path", "required": False, "default": ""},
+        "defaults_file": {"type": "path", "required": False, "default": ""},
+        "deployer_input": {"type": "path", "required": False, "default": ""},
+        "overrides": {"type": "list", "required": False, "default": ""},
         "create": {"type": "bool", "required": False, "default": False},
         "admin_cred": {"type": "bool", "required": False, "default": False},
         "use_test_accounts": {"type": "bool", "required": False, "default": False},
         "image_disk_format": {"type": "str", "required": False, "default": DEFAULT_IMAGE_FORMAT},
         "image": {"type": "str", "required": False, "default": DEFAULT_IMAGE},
-        "network_id": {"type": "str", "required": False},
-        "log_file": {"type": "path", "required": False},
+        "network_id": {"type": "str", "required": False, "default": ""},
+        "log_file": {"type": "path", "required": False, "default": ""},
     })
     # search depending on where Tempest is installed
     sys.path.insert(0, unfrackpath(module.params["tempest_dir"]))
@@ -210,7 +208,6 @@ def main():
         module.fail_json(msg="Failed to import urllib3 or requests")
 
     try:
-
         conf = TempestConf(unfrackpath(module.params["log_file"]))
 
         if module.params["defaults_file"] and os.path.isfile(module.params["defaults_file"]):
