@@ -196,7 +196,7 @@ def main():
         "log_file": {"type": "path", "required": False, "default": ""},
     })
     # search depending on where Tempest is installed
-    sys.path.insert(0, unfrackpath(module.params["tempest_dir"]))
+    # sys.path.insert(0, unfrackpath(module.params["tempest_dir"]))
     if module.params["create"] and not module.params["admin_cred"]:
         module.fail_json(msg="Cannot use 'create' param without 'admin_cred' param as True")
     if module.params["deployer_input"] and not os.path.isfile(unfrackpath(module.params["deployer_input"])):
@@ -280,8 +280,7 @@ def main():
 
         create_tempest_flavors(clients.flavors, conf, module.params["create"])
         create_tempest_images(clients.images, conf, module.params["image"], module.params["create"],
-                              module.params["image_disk_format"], unfrackpath(
-                module.params["tempest_dir"]))  # TODO try to replace tempest_dir with custom image folder
+                              module.params["image_disk_format"])
         has_neutron = "network" in services
 
         LOG.info("Setting up network")
@@ -305,15 +304,10 @@ def main():
         module.fail_json(msg=str(error))
 
 
-@contextmanager
-def no_std():
-    _stdout, _stderr = sys.stdout, sys.stderr
-    sys.stdout = sys.stderr = open(os.devnull, "w")
-
-    try:
-        yield
-    finally:
-        sys.stdout, sys.stderr = _stdout, _stderr
+def handle_output_path(filename):
+    dir_name = os.path.dirname(filename)
+    if not os.path.isdir(dir_name):
+        os.makedirs(dir_name)
 
 
 def unfrackpath(path):
@@ -659,9 +653,12 @@ def find_or_create_flavor(client, flavor_id, flavor_name,
 
 
 def create_tempest_images(client, conf, image_path, allow_creation,
-                          disk_format, tempest_dir):
-    img_path = os.path.join(tempest_dir, conf.get("scenario", "img_dir"),
-                            conf.get_defaulted("scenario", "img_file"))
+                          disk_format):
+    img_path = unfrackpath(os.path.join(conf.get("scenario", "img_dir"),
+                                        conf.get_defaulted("scenario", "img_file")))
+
+    handle_output_path(img_path)  # create path if doesn't exists
+
     name = image_path[image_path.rfind('/') + 1:]
     alt_name = name + "_alt"
     image_id = None
