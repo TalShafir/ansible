@@ -127,7 +127,6 @@ from ansible.module_utils._text import to_bytes
 from ansible.module_utils._text import to_native
 from ansible.module_utils._text import to_text
 
-
 LOG = logging.getLogger(__name__)
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 
@@ -175,7 +174,7 @@ SERVICE_EXTENSION_KEY = {
 # TODO change overrides argument to be string in a format
 
 def main():
-    module = AnsibleModule(argument_spec={
+    ansible_module = AnsibleModule(argument_spec={
         "output_path": {"type": "path", "required": True},
         "overrides_file": {"type": "path", "required": False, "default": ""},
         "defaults_file": {"type": "path", "required": False, "default": ""},
@@ -189,50 +188,50 @@ def main():
         "network_id": {"type": "str", "required": False, "default": ""},
         "log_file": {"type": "path", "required": False, "default": ""},
     })
-    if module.params["create"] and not module.params["admin_cred"]:
-        module.fail_json(msg="Cannot use 'create' param without 'admin_cred' param as True")
-    if module.params["deployer_input"] and not os.path.isfile(unfrackpath(module.params["deployer_input"])):
-        module.fail_json(msg="the deployer_input file is not a file")
+    if ansible_module.params["create"] and not ansible_module.params["admin_cred"]:
+        ansible_module.fail_json(msg="Cannot use 'create' param without 'admin_cred' param as True")
+    if ansible_module.params["deployer_input"] and not os.path.isfile(unfrackpath(ansible_module.params["deployer_input"])):
+        ansible_module.fail_json(msg="the deployer_input file is not a file")
 
     if not HAS_TEMPEST:
-        module.fail_json(msg="Failed to import Tempest")
+        ansible_module.fail_json(msg="Failed to import Tempest")
     if not HAS_URL:
-        module.fail_json(msg="Failed to import urllib3 or requests")
+        ansible_module.fail_json(msg="Failed to import urllib3 or requests")
 
     try:
-        log_file_path = unfrackpath(module.params["log_file"])
+        log_file_path = unfrackpath(ansible_module.params["log_file"])
         prepare_path(log_file_path)
         conf = TempestConf(log_file_path)
 
-        if module.params["defaults_file"] and os.path.isfile(module.params["defaults_file"]):
-            LOG.info("Reading defaults from file '%s'", module.params["defaults_file"])
-            conf.read(module.params["defaults_file"])
-        if module.params["deployer_input"] and os.path.isfile(module.params["deployer_input"]):
+        if ansible_module.params["defaults_file"] and os.path.isfile(ansible_module.params["defaults_file"]):
+            LOG.info("Reading defaults from file '%s'", ansible_module.params["defaults_file"])
+            conf.read(ansible_module.params["defaults_file"])
+        if ansible_module.params["deployer_input"] and os.path.isfile(ansible_module.params["deployer_input"]):
             LOG.info("Adding options from deployer-input file '%s'",
-                     module.params["deployer_input"])
+                     ansible_module.params["deployer_input"])
             deployer_input = ConfigParser.SafeConfigParser()
-            deployer_input.read(module.params["deployer_input"])
+            deployer_input.read(ansible_module.params["deployer_input"])
             for section in deployer_input.sections():
                 # There are no deployer input options in DEFAULT
                 for (key, value) in deployer_input.items(section):
                     conf.set(section, key, value, priority=True)
-        if module.params["overrides"]:
-            for section, key, value in parse_overrides(module.params["overrides"]):
+        if ansible_module.params["overrides"]:
+            for section, key, value in parse_overrides(ansible_module.params["overrides"]):
                 conf.set(section, key, value, priority=True)
 
         # validate necessary settings are being given
-        if module.params["admin_cred"]:
+        if ansible_module.params["admin_cred"]:
             if not conf.has_option("identity", "admin_username"):
-                module.fail_json(
+                ansible_module.fail_json(
                     msg="the 'admin_cred' option require 'admin_username' to be provided by the user or as a default")
             if not conf.has_option("identity", "admin_tenant_name"):
-                module.fail_json(
+                ansible_module.fail_json(
                     msg="the 'admin_cred' option require 'admin_tenant_name' to be provided by the user or as a default")
             if not conf.has_option("identity", "admin_password"):
-                module.fail_json(
+                ansible_module.fail_json(
                     msg="the 'admin_cred' option require 'admin_password' to be provided by the user or as a default")
         if not conf.has_option("identity", "uri"):
-            module.fail_json(msg="the identity.uri setting must be provided")
+            ansible_module.fail_json(msg="the identity.uri setting must be provided")
 
         uri = conf.get("identity", "uri")
         api_version = 2
@@ -245,15 +244,15 @@ def main():
             conf.set("identity", "uri_v3", uri)
         else:
             conf.set("identity", "uri_v3", uri.replace("v2.0", "v3"))
-        if not module.params["admin_cred"]:
+        if not ansible_module.params["admin_cred"]:
             conf.set("identity", "admin_username", "")
             conf.set("identity", "admin_tenant_name", "")
             conf.set("identity", "admin_password", "")
             conf.set("auth", "allow_tenant_isolation", "False")
-        if module.params["use_test_accounts"]:
+        if ansible_module.params["use_test_accounts"]:
             conf.set("auth", "allow_tenant_isolation", "True")
 
-        clients = ClientManager(conf, module.params["admin_cred"])
+        clients = ClientManager(conf, ansible_module.params["admin_cred"])
 
         swift_discover = conf.get_defaulted('object-storage-feature-enabled',
                                             'discoverability')
@@ -268,34 +267,34 @@ def main():
             )
         )
 
-        if module.params["create"] and not module.params["use_test_accounts"]:
+        if ansible_module.params["create"] and not ansible_module.params["use_test_accounts"]:
             create_tempest_users(clients.tenants, clients.roles, clients.users,
                                  conf, services)
 
-        create_tempest_flavors(clients.flavors, conf, module.params["create"])
-        create_tempest_images(clients.images, conf, module.params["image"], module.params["create"],
-                              module.params["image_disk_format"])
+        create_tempest_flavors(clients.flavors, conf, ansible_module.params["create"])
+        create_tempest_images(clients.images, conf, ansible_module.params["image"], ansible_module.params["create"],
+                              ansible_module.params["image_disk_format"])
         has_neutron = "network" in services
 
         LOG.info("Setting up network")
         LOG.debug("Is neutron present: {0}".format(has_neutron))
-        create_tempest_networks(clients, conf, has_neutron, module.params["network_id"])
+        create_tempest_networks(clients, conf, has_neutron, ansible_module.params["network_id"])
 
         configure_discovered_services(conf, services)
         configure_boto(conf, services)
         configure_horizon(conf)
-        LOG.info("Creating configuration file %s" % os.path.abspath(module.params["output_path"]))
+        LOG.info("Creating configuration file %s" % os.path.abspath(ansible_module.params["output_path"]))
 
-        output_path = unfrackpath(module.params["output_path"])
+        output_path = unfrackpath(ansible_module.params["output_path"])
         if os.path.isdir(output_path):
             output_path += "tempest.conf"
         with open(output_path, 'w') as f:
             conf.write(f)
 
-        module.exit_json(msg="generated tempest.conf successfully",
-                         config_path=unfrackpath(module.params["output_path"]))
+        ansible_module.exit_json(msg="generated tempest.conf successfully",
+                         config_path=unfrackpath(ansible_module.params["output_path"]))
     except Exception as error:
-        module.fail_json(msg=str(error))
+        ansible_module.fail_json(msg=str(error))
 
 
 def prepare_path(file_path):
@@ -331,6 +330,7 @@ def unfrackpath(path, follow=True):
             os.path.abspath(os.path.expanduser(os.path.expandvars(to_bytes(path, errors='surrogate_or_strict')))))
 
     return to_text(final_path, errors='surrogate_or_strict')
+
 
 # copied from ansible.utils.path
 def makedirs_safe(path, mode=None):
