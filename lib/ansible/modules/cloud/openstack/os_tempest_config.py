@@ -1,5 +1,84 @@
 #!/usr/bin/python
 
+ANSIBLE_METADATA = {'metadata_version': '1.0',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
+DOCUMENTATION = '''
+---
+module: os_tempest_config
+short_description: configs Tempest (OpenStack)
+description: derived from Red Hat's config_tempest.py script and Red Hat's Tempest api_discovery.py script
+    -
+author: "Tal Shafir , @TalShafir"
+requirements: ["tempest", "urllib3 >= 1.15", "requests"]
+    -
+options:
+    overrides_file:
+        description:
+            path for a file containing overrides values in the format section.option=value
+            where section is a section header in the configuration file.
+        required: False
+        default: ''
+    deployer_input:
+        description:
+            path for a file in the format of Tempest's configuration file that will override the default values.
+            The deployer-input file is an alternative to providing key/value pairs.
+            If there are also key/value pairs they will be applied after the deployer-input file.
+        required: False
+        default: ''
+    defaults_file:
+        description:
+            a path for a defaults file that will be provided by the distributor of the tempest code,
+            a distro for example,to specify defaults that are different than the generic defaults for tempest.
+        required: False
+        default: ''
+    overrides:
+        description: 
+            key value pairs to modify. The key is section.key=value where section is a section header in the configuration file.
+        required: False
+        default: ''
+    create:
+        description:
+            When C(True) create default tempest resources
+        required: False
+        default: False
+    admin_cred:
+        description:
+            When C(True) Run with admin creds
+        required: False
+        default: False
+    use_test_accounts:
+        description:
+            When C(True) use accounts from accounts.yaml
+        required: False
+        default: False
+    image_disk_format:
+        description:
+            a format of an image to be uploaded to glance
+        required: False
+        default: 'qcow2'
+    image:
+        description:
+            an image to be uploaded to glance. The name of the image is the leaf name of the path which can be either a filename or url.
+        required: False
+        default: "http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img"
+    network_id:
+        description:
+            The ID of an existing network in our OpenStack instance with external connectivity
+        required: False
+        default: ''
+    log_file:
+        description:
+            If given  will write all the log info to the given file.
+        required: False
+        default: os.devnull
+'''
+
+EXAMPLES = '''
+
+'''
+
 from ansible.module_utils.basic import AnsibleModule
 
 import ConfigParser
@@ -42,94 +121,12 @@ try:
 except ImportError:
     HAS_URL = True
 
-DOCUMENTATION = '''
----
-module: os_tempest_config
-short_description: configs Tempest (OpenStack)
-description: derived from Red Hat's config_tempest.py script and Red Hat's Tempest api_discovery.py script
-    -
-author: "Tal Shafir , @TalShafir"
-requirements: ["tempest", "urllib3 >= 1.15", "requests"]
-    -
-options:
-    tempest_dir:
-        description:
-            -The path to the tempest dir
-        required: True
+# imports for the code copied from ansible.utils.path
+from errno import EEXIST
+from ansible.module_utils._text import to_bytes
+from ansible.module_utils._text import to_native
+from ansible.module_utils._text import to_text
 
-    overrides_file:
-        description:
-            -path for a file containing overrides values in the format section.option=value
-            -where section is a section header in the configuration file.
-        required: False
-        default: ''
-
-    deployer_input:
-        description:
-            -path for a file in the format of Tempest's configuration file that will override the default values.
-            -The deployer-input file is an alternative to providing key/value pairs.
-            -If there are also key/value pairs they will be applied after the deployer-input file.
-        required: False
-        default: ''
-
-    defaults_file:
-        description:
-            -a path for a defaults file that will be provided by the distributor of the tempest code,
-            -a distro for example,to specify defaults that are different than the generic defaults for tempest.
-        required: False
-        default: ''
-
-    overrides:
-        description: TODO
-            -key value pairs to modify. The key is section.key=value where section is a section header in the configuration file.
-        required: False
-        default: ''
-
-    create:
-        description:
-            -When C(True) create default tempest resources
-        required: False
-        default: False
-
-    admin_cred:
-        description:
-            -When C(True) Run with admin creds
-        required: False
-        default: False
-
-    use_test_accounts:
-        description:
-            -When C(True) use accounts from accounts.yaml
-        required: False
-        default: False
-
-    image_disk_format:
-        description:
-            -a format of an image to be uploaded to glance
-        required: False
-        default: 'qcow2'
-
-    image:
-        description:
-            -an image to be uploaded to glance. The name of the image is the leaf name of the path which can be either a filename or url.
-        required: False
-        default: "http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img"
-
-    network_id:
-        description:
-            -The ID of an existing network in our OpenStack instance with external connectivity
-        required: False
-        default: ''
-    log_file:
-        description:
-            -If given  will write all the log info to the given file.
-        required: False
-        default: os's /dev/null
-'''
-
-EXAMPLES = '''
-
-'''
 
 LOG = logging.getLogger(__name__)
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -180,7 +177,6 @@ SERVICE_EXTENSION_KEY = {
 def main():
     module = AnsibleModule(argument_spec={
         "output_path": {"type": "path", "required": True},
-        "tempest_dir": {"type": "path", "required": True},  # TODO check if really required
         "overrides_file": {"type": "path", "required": False, "default": ""},
         "defaults_file": {"type": "path", "required": False, "default": ""},
         "deployer_input": {"type": "path", "required": False, "default": ""},
@@ -193,8 +189,6 @@ def main():
         "network_id": {"type": "str", "required": False, "default": ""},
         "log_file": {"type": "path", "required": False, "default": ""},
     })
-    # search depending on where Tempest is installed
-    # sys.path.insert(0, unfrackpath(module.params["tempest_dir"]))
     if module.params["create"] and not module.params["admin_cred"]:
         module.fail_json(msg="Cannot use 'create' param without 'admin_cred' param as True")
     if module.params["deployer_input"] and not os.path.isfile(unfrackpath(module.params["deployer_input"])):
@@ -206,7 +200,9 @@ def main():
         module.fail_json(msg="Failed to import urllib3 or requests")
 
     try:
-        conf = TempestConf(unfrackpath(module.params["log_file"]))
+        log_file_path = unfrackpath(module.params["log_file"])
+        prepare_path(log_file_path)
+        conf = TempestConf(log_file_path)
 
         if module.params["defaults_file"] and os.path.isfile(module.params["defaults_file"]):
             LOG.info("Reading defaults from file '%s'", module.params["defaults_file"])
@@ -302,15 +298,61 @@ def main():
         module.fail_json(msg=str(error))
 
 
-def handle_output_path(filename):
-    dir_name = os.path.dirname(filename)
+def prepare_path(file_path):
+    """Creates the path to the dir that contains the file if it doesn't exists"""
+
+    dir_name = os.path.dirname(file_path)
     if not os.path.isdir(dir_name):
-        os.makedirs(dir_name)
+        makedirs_safe(dir_name)
 
 
-def unfrackpath(path):
-    return os.path.normpath(
-        os.path.realpath(os.path.expanduser(os.path.expandvars(path))))
+# copied from ansible.utils.path
+def unfrackpath(path, follow=True):
+    """
+    Returns a path that is free of symlinks (if follow=True), environment variables, relative path traversals and symbols (~)
+
+    :arg path: A byte or text string representing a path to be canonicalized
+    :arg follow: A boolean to indicate of symlinks should be resolved or not
+    :raises UnicodeDecodeError: If the canonicalized version of the path
+        contains non-utf8 byte sequences.
+    :rtype: A text string (unicode on pyyhon2, str on python3).
+    :returns: An absolute path with symlinks, environment variables, and tilde
+        expanded.  Note that this does not check whether a path exists.
+
+    example::
+        '$HOME/../../var/mail' becomes '/var/spool/mail'
+    """
+
+    if follow:
+        final_path = os.path.normpath(
+            os.path.realpath(os.path.expanduser(os.path.expandvars(to_bytes(path, errors='surrogate_or_strict')))))
+    else:
+        final_path = os.path.normpath(
+            os.path.abspath(os.path.expanduser(os.path.expandvars(to_bytes(path, errors='surrogate_or_strict')))))
+
+    return to_text(final_path, errors='surrogate_or_strict')
+
+# copied from ansible.utils.path
+def makedirs_safe(path, mode=None):
+    """Safe way to create dirs in muliprocess/thread environments.
+
+    :arg path: A byte or text string representing a directory to be created
+    :kwarg mode: If given, the mode to set the directory to
+    :raises Exception: If the directory cannot be created and does not already exists.
+    :raises UnicodeDecodeError: if the path is not decodable in the utf-8 encoding.
+    """
+
+    rpath = unfrackpath(path)
+    b_rpath = to_bytes(rpath)
+    if not os.path.exists(b_rpath):
+        try:
+            if mode:
+                os.makedirs(b_rpath, mode)
+            else:
+                os.makedirs(b_rpath)
+        except OSError as e:
+            if e.errno != EEXIST:
+                raise Exception("Unable to create local directories(%s): %s" % (to_native(rpath), to_native(e)))
 
 
 def parse_overrides(overrides):
@@ -655,7 +697,7 @@ def create_tempest_images(client, conf, image_path, allow_creation,
     img_path = unfrackpath(os.path.join(conf.get("scenario", "img_dir"),
                                         conf.get_defaulted("scenario", "img_file")))
 
-    handle_output_path(img_path)  # create path if doesn't exists
+    prepare_path(img_path)  # create path if doesn't exists
 
     name = image_path[image_path.rfind('/') + 1:]
     alt_name = name + "_alt"
