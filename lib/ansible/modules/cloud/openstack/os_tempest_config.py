@@ -6,7 +6,8 @@ import ConfigParser
 import logging
 import os
 import shutil
-import urllib2
+
+import ansible.module_utils.urls
 
 try:
     import tempest.config
@@ -771,8 +772,8 @@ def configure_horizon(conf):
     assert base.startswith('http:') or base.startswith('https:')
     has_horizon = True
     try:
-        urllib2.urlopen(base)
-    except urllib2.URLError:
+        ansible.module_utils.urls.open_url(base)
+    except Exception:
         has_horizon = False
     conf.set('service_available', 'horizon', str(has_horizon))
     conf.set('dashboard', 'dashboard_url', base + '/')
@@ -833,7 +834,7 @@ def configure_discovered_services(conf, services):
 
 def _download_file(url, destination):
     LOG.info("Downloading '%s' and saving as '%s'", url, destination)
-    f = urllib2.urlopen(url)
+    f = ansible.module_utils.urls.open_url(url)  # urllib2.urlopen(url)
     data = f.read()
     with open(destination, "wb") as dest:
         dest.write(data)
