@@ -288,12 +288,12 @@ def main():
 
         output_path = unfrackpath(ansible_module.params["output_path"])
         if os.path.isdir(output_path):
-            output_path += "tempest.conf"
+            os.path.join(output_path, "tempest.conf")
         with open(output_path, 'w') as f:
             conf.write(f)
 
         ansible_module.exit_json(msg="generated tempest.conf successfully",
-                                 config_path=unfrackpath(ansible_module.params["output_path"]))
+                                 config_path=output_path, changed=True)
     except Exception as error:
         ansible_module.fail_json(msg=str(error))
 
