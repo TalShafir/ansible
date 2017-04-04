@@ -174,23 +174,24 @@ SERVICE_EXTENSION_KEY = {
 # TODO change overrides argument to be string in a format
 
 def main():
-    ansible_module = AnsibleModule(argument_spec={
-        "output_path": {"type": "path", "required": True},
-        "overrides_file": {"type": "path", "required": False, "default": ""},
-        "defaults_file": {"type": "path", "required": False, "default": ""},
-        "deployer_input": {"type": "path", "required": False, "default": ""},
-        "overrides": {"type": "list", "required": False, "default": ""},
-        "create": {"type": "bool", "required": False, "default": False},
-        "admin_cred": {"type": "bool", "required": False, "default": False},
-        "use_test_accounts": {"type": "bool", "required": False, "default": False},
-        "image_disk_format": {"type": "str", "required": False, "default": DEFAULT_IMAGE_FORMAT},
-        "image": {"type": "str", "required": False, "default": DEFAULT_IMAGE},
-        "network_id": {"type": "str", "required": False, "default": ""},
-        "log_file": {"type": "path", "required": False, "default": ""},
-    })
+    ansible_module = AnsibleModule(argument_spec=dict(
+        output_path=dict(type="path", required=True),
+        overrides_file=dict(type="path", required=False, default=""),
+        defaults_file=dict(type="path", required=False, default=""),
+        deployer_input=dict(type="path", required=False, default=""),
+        overrides=dict(type="list", required=False, default=""),
+        create=dict(type="bool", required=False, default=False),
+        admin_cred=dict(type="bool", required=False, default=False),
+        use_test_accounts=dict(type="bool", required=False, default=False),
+        image_disk_format=dict(type="str", required=False, default=DEFAULT_IMAGE_FORMAT),
+        image=dict(type="str", required=False, default=DEFAULT_IMAGE),
+        network_id=dict(type="str", required=False, default=""),
+        log_file=dict(type="path", required=False, default=""),
+    ))
     if ansible_module.params["create"] and not ansible_module.params["admin_cred"]:
         ansible_module.fail_json(msg="Cannot use 'create' param without 'admin_cred' param as True")
-    if ansible_module.params["deployer_input"] and not os.path.isfile(unfrackpath(ansible_module.params["deployer_input"])):
+    if ansible_module.params["deployer_input"] and not os.path.isfile(
+            unfrackpath(ansible_module.params["deployer_input"])):
         ansible_module.fail_json(msg="the deployer_input file is not a file")
 
     if not HAS_TEMPEST:
@@ -292,7 +293,7 @@ def main():
             conf.write(f)
 
         ansible_module.exit_json(msg="generated tempest.conf successfully",
-                         config_path=unfrackpath(ansible_module.params["output_path"]))
+                                 config_path=unfrackpath(ansible_module.params["output_path"]))
     except Exception as error:
         ansible_module.fail_json(msg=str(error))
 
@@ -387,14 +388,14 @@ class ClientManager(object):
 
     def get_credentials(self, conf, username, tenant_name, password,
                         identity_version='v2'):
-        creds_kwargs = {'username': username,
-                        'password': password}
+        creds_kwargs = dict(username=username,
+                            password=password)
         if identity_version == 'v3':
-            creds_kwargs.update({'project_name': tenant_name,
-                                 'domain_name': 'Default',
-                                 'user_domain_name': 'Default'})
+            creds_kwargs.update(dict(project_name=tenant_name,
+                                     domain_name='Default',
+                                     user_domain_name='Default'))
         else:
-            creds_kwargs.update({'tenant_name': tenant_name})
+            creds_kwargs.update(dict(tenant_name=tenant_name))
         return auth.get_credentials(
             auth_url=None,
             fill_in=False,
@@ -444,17 +445,15 @@ class ClientManager(object):
             tenant_name = conf.get_defaulted('identity', 'tenant_name')
 
         self.identity_region = conf.get_defaulted('identity', 'region')
-        default_params = {
-            'disable_ssl_certificate_validation':
-                conf.get_defaulted('identity',
-                                   'disable_ssl_certificate_validation'),
-            'ca_certs': conf.get_defaulted('identity', 'ca_certificates_file')
-        }
-        compute_params = {
-            'service': conf.get_defaulted('compute', 'catalog_type'),
-            'region': self.identity_region,
-            'endpoint_type': conf.get_defaulted('compute', 'endpoint_type')
-        }
+        default_params = dict(
+            disable_ssl_certificate_validation=conf.get_defaulted('identity', 'disable_ssl_certificate_validation'),
+            ca_certs=conf.get_defaulted('identity', 'ca_certificates_file')
+        )
+        compute_params = dict(
+            service=conf.get_defaulted('compute', 'catalog_type'),
+            region=self.identity_region,
+            endpoint_type=conf.get_defaulted('compute', 'endpoint_type')
+        )
         compute_params.update(default_params)
 
         if self.identity_version == "v2":
