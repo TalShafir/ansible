@@ -1,15 +1,12 @@
 #!/usr/bin/python
 
-from ansible.module_utils.basic import *
+from ansible.module_utils.basic import AnsibleModule
 
 import ConfigParser
 import logging
 import os
 import shutil
-import sys
 import urllib2
-
-from contextlib import contextmanager
 
 try:
     import tempest.config
