@@ -8,53 +8,54 @@ DOCUMENTATION = '''
 ---
 module: os_tempest_config
 short_description: configs Tempest (OpenStack)
-description: derived from Red Hat's config_tempest.py script and Red Hat's Tempest api_discovery.py script
+description:
+    - derived from Red Hat's config_tempest.py script and Red Hat's Tempest api_discovery.py script
 author: "Tal Shafir , @TalShafir"
 requirements: ["tempest", "urllib3 >= 1.15", "requests"]
 options:
     overrides_file:
         description:
-            path for a file containing overrides values in the format section.option=value
+            Path for a file containing overrides values in the format section.option=value
             where section is a section header in the configuration file.
         required: False
         default: ''
     deployer_input:
         description:
-            path for a file in the format of Tempest's configuration file that will override the default values.
-            The deployer-input file is an alternative to providing key/value pairs.
-            If there are also key/value pairs they will be applied after the deployer-input file.
+            Path for a file in the format of Tempest's configuration file that will override the default values.
+            The I(deployer_input) file is an alternative to providing key/value pairs.
+            If there are also key/value pairs they will be applied after the I(deployer_input) file.
         required: False
         default: ''
     defaults_file:
         description:
-            a path for a defaults file that will be provided by the distributor of the tempest code,
+            A path for a defaults file that will be provided by the distributor of the tempest code,
             a distro for example,to specify defaults that are different than the generic defaults for tempest.
         required: False
         default: ''
     overrides:
         description: 
-            key value pairs to modify. The format is 'section.key,value' where section is a section header in the configuration file.
-        required: False
+            Key value pairs to modify. The format is 'section.key,value' where section is a section header in the configuration file.
+        required: 'False'
         default: ''
     create:
         description:
             When C(True) create default tempest resources
         required: False
-        default: False
+        default: 'False'
     admin_cred:
         description:
             When C(True) Run with admin creds
         required: False
-        default: False
+        default: 'False'
     use_test_accounts:
         description:
             When C(True) use accounts from accounts.yaml
         required: False
-        default: False
+        default: 'False'
     image_disk_format:
         description:
-            a format of an image to be uploaded to glance
-        required: False
+            A format of an image to be uploaded to glance
+        required: 'False'
         default: 'qcow2'
     image:
         description:
