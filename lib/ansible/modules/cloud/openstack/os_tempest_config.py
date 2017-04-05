@@ -9,10 +9,8 @@ DOCUMENTATION = '''
 module: os_tempest_config
 short_description: configs Tempest (OpenStack)
 description: derived from Red Hat's config_tempest.py script and Red Hat's Tempest api_discovery.py script
-    -
 author: "Tal Shafir , @TalShafir"
 requirements: ["tempest", "urllib3 >= 1.15", "requests"]
-    -
 options:
     overrides_file:
         description:
@@ -35,7 +33,7 @@ options:
         default: ''
     overrides:
         description: 
-            key value pairs to modify. The key is section.key=value where section is a section header in the configuration file.
+            key value pairs to modify. The format is 'section.key,value' where section is a section header in the configuration file.
         required: False
         default: ''
     create:
