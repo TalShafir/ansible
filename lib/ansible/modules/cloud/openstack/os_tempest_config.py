@@ -9,7 +9,10 @@ DOCUMENTATION = '''
 module: os_tempest_config
 short_description: configs Tempest (OpenStack)
 description:
-    - derived from Red Hat's config_tempest.py script and Red Hat's Tempest api_discovery.py script
+    - Derived from Red Hat's config_tempest.py script and Red Hat's Tempest api_discovery.py script
+    
+version_added: 2.3.0
+    
 author: "Tal Shafir , @TalShafir"
 requirements: ["tempest", "urllib3 >= 1.15", "requests"]
 options:
@@ -35,7 +38,7 @@ options:
     overrides:
         description: 
             Key value pairs to modify. The format is 'section.key,value' where section is a section header in the configuration file.
-        required: 'False'
+        required: False
         default: ''
     create:
         description:
@@ -55,7 +58,7 @@ options:
     image_disk_format:
         description:
             A format of an image to be uploaded to glance
-        required: 'False'
+        required: False
         default: 'qcow2'
     image:
         description:
