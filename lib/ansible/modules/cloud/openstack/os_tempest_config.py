@@ -840,7 +840,7 @@ def configure_discovered_services(conf, services):
             SERVICE_NAMES.pop('volume')
             SERVICE_VERSIONS.pop('volume')
     # set service availability
-    for service, codename in SERVICE_NAMES.iteritems():
+    for service, codename in SERVICE_NAMES.items():
         # ceilometer is still transitioning from metering to telemetry
         if service == 'telemetry' and 'metering' in services:
             service = 'metering'
@@ -850,7 +850,7 @@ def configure_discovered_services(conf, services):
         conf.set('service_available', codename, str(service in services))
 
     # set supported API versions for services with more of them
-    for service, versions in SERVICE_VERSIONS.iteritems():
+    for service, versions in SERVICE_VERSIONS.items():
         supported_versions = services.get(service, {}).get('versions', [])
         section = service + '-feature-enabled'
         for version in versions:
@@ -860,7 +860,7 @@ def configure_discovered_services(conf, services):
 
     # set service extensions
     keystone_v3_support = conf.get('identity-feature-enabled', 'api_v3')
-    for service, ext_key in SERVICE_EXTENSION_KEY.iteritems():
+    for service, ext_key in SERVICE_EXTENSION_KEY.items():
         if service in services:
             extensions = ','.join(services[service]['extensions'])
             if service == 'object-store':
