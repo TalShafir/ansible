@@ -204,6 +204,7 @@ def main():
     try:
         log_file_path = unfrackpath(ansible_module.params["log_file"])
         prepare_path(log_file_path)
+
         conf = TempestConf(log_file_path)
 
         if ansible_module.params["defaults_file"] and os.path.isfile(ansible_module.params["defaults_file"]):
@@ -212,12 +213,15 @@ def main():
         if ansible_module.params["deployer_input"] and os.path.isfile(ansible_module.params["deployer_input"]):
             LOG.info("Adding options from deployer-input file '%s'",
                      ansible_module.params["deployer_input"])
+
             deployer_input = ConfigParser.SafeConfigParser()
-            deployer_input.read(ansible_module.params["deployer_input"])
+            deployer_input.read(unfrackpath(ansible_module.params["deployer_input"]))
+
             for section in deployer_input.sections():
                 # There are no deployer input options in DEFAULT
                 for (key, value) in deployer_input.items(section):
                     conf.set(section, key, value, priority=True)
+
         if ansible_module.params["overrides"]:
             for section, key, value in parse_overrides(ansible_module.params["overrides"]):
                 conf.set(section, key, value, priority=True)
