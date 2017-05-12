@@ -16,6 +16,10 @@ version_added: 2.3.0
 author: "Tal Shafir , @TalShafir"
 requirements: ["tempest", "urllib3 >= 1.15", "requests"]
 options:
+    dest:
+        description:
+            Path for a file that this module will create(usually named tempest.conf)
+        required: True
     overrides_file:
         description:
             Path for a file containing overrides values in the format section.option=value
@@ -177,7 +181,7 @@ SERVICE_EXTENSION_KEY = {
 
 def main():
     ansible_module = AnsibleModule(argument_spec=dict(
-        output_path=dict(type="path", required=True),
+        dest=dict(type="path", required=True),
         overrides_file=dict(type="path", required=False, default=""),
         defaults_file=dict(type="path", required=False, default=""),
         deployer_input=dict(type="path", required=False, default=""),
@@ -290,9 +294,9 @@ def main():
         configure_discovered_services(conf, services)
         configure_boto(conf, services)
         configure_horizon(conf)
-        LOG.info("Creating configuration file %s" % os.path.abspath(ansible_module.params["output_path"]))
+        LOG.info("Creating configuration file %s" % os.path.abspath(ansible_module.params["dest"]))
 
-        output_path = unfrackpath(ansible_module.params["output_path"])
+        output_path = unfrackpath(ansible_module.params["dest"])
         if os.path.isdir(output_path):
             os.path.join(output_path, "tempest.conf")
         with open(output_path, 'w') as f:
