@@ -53,7 +53,7 @@ options:
         description:
             When C(True) Run with admin creds
         required: False
-        default: 'False'
+        default: 'True'
     use_test_accounts:
         description:
             When C(True) use accounts from accounts.yaml
@@ -187,15 +187,16 @@ def main():
         deployer_input=dict(type="path", required=False, default=""),
         overrides=dict(type="list", required=False, default=""),
         create=dict(type="bool", required=False, default=False),
-        admin_cred=dict(type="bool", required=False, default=False),
+        admin_cred=dict(type="bool", required=False, default=True),
         use_test_accounts=dict(type="bool", required=False, default=False),
         image_disk_format=dict(type="str", required=False, default=DEFAULT_IMAGE_FORMAT),
         image=dict(type="str", required=False, default=DEFAULT_IMAGE),
         network_id=dict(type="str", required=False, default=""),
         log_file=dict(type="path", required=False, default=""),
-    ))
-    if ansible_module.params["create"] and not ansible_module.params["admin_cred"]:
-        ansible_module.fail_json(msg="Cannot use 'create' param without 'admin_cred' param as True")
+    ), required_together=(('create', 'admin_cred'),),)
+
+    # if ansible_module.params["create"] and not ansible_module.params["admin_cred"]:
+    #     ansible_module.fail_json(msg="Cannot use 'create' param without 'admin_cred' param as True")
     if ansible_module.params["deployer_input"] and not os.path.isfile(
             unfrackpath(ansible_module.params["deployer_input"])):
         ansible_module.fail_json(msg="the deployer_input file is not a file")
