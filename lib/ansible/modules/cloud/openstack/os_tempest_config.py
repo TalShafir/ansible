@@ -9,7 +9,7 @@ DOCUMENTATION = '''
 module: os_tempest_config
 short_description: configs Tempest (OpenStack)
 description:
-    - Derived from Red Hat's config_tempest.py script and Red Hat's Tempest api_discovery.py script
+    - Generates tempest.conf file using user's settings,defaults file and self-discovery.
     
 version_added: 2.3.0
     
@@ -79,6 +79,8 @@ options:
             If given  will write all the log info to the given file.
         required: False
         default: os.devnull
+notes:
+    - This module is derrived from Red Hat's python-tempestconf repository, U(https://github.com/redhat-openstack/python-tempestconf)
 '''
 
 EXAMPLES = '''
