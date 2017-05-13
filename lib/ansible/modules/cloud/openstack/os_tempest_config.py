@@ -85,6 +85,10 @@ EXAMPLES = '''
 
 '''
 
+RETURN = '''
+
+'''
+
 from ansible.module_utils.basic import AnsibleModule
 
 import ConfigParser
@@ -177,8 +181,6 @@ SERVICE_EXTENSION_KEY = {
 }
 
 
-# TODO change overrides argument to be string in a format
-
 def main():
     ansible_module = AnsibleModule(argument_spec=dict(
         dest=dict(type="path", required=True),
@@ -193,7 +195,7 @@ def main():
         image=dict(type="str", required=False, default=DEFAULT_IMAGE),
         network_id=dict(type="str", required=False, default=""),
         log_file=dict(type="path", required=False, default=""),
-    ), required_together=(('create', 'admin_cred'),),)
+    ), required_together=(('create', 'admin_cred'),), )
 
     # if ansible_module.params["create"] and not ansible_module.params["admin_cred"]:
     #     ansible_module.fail_json(msg="Cannot use 'create' param without 'admin_cred' param as True")
