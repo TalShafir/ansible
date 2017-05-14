@@ -156,6 +156,7 @@ SERVICE_NAMES = {
     'network': 'neutron',
     'object-store': 'swift',
     'orchestration': 'heat',
+    'share': 'manila',
     'telemetry': 'ceilometer',
     'volume': 'cinder',
     'messaging': 'zaqar',
@@ -261,10 +262,18 @@ def main():
         else:
             conf.set("identity", "uri_v3", uri.replace("v2.0", "v3"))
         if not ansible_module.params["admin_cred"]:
+            conf.set("auth", "admin_username", "")
+            conf.set("auth", "admin_project_name", "")
+            conf.set("auth", "admin_password", "")
+
+            # backward compatibility, moved to auth section
+
             conf.set("identity", "admin_username", "")
+            # renamed to 'admin_project_name' in auth section
             conf.set("identity", "admin_tenant_name", "")
             conf.set("identity", "admin_password", "")
             conf.set("auth", "allow_tenant_isolation", "False")
+
         if ansible_module.params["use_test_accounts"]:
             conf.set("auth", "allow_tenant_isolation", "True")
 
@@ -298,6 +307,7 @@ def main():
 
         configure_discovered_services(conf, services)
         configure_boto(conf, services)
+        configure_keystone_feature_flags(conf, services)
         configure_horizon(conf)
         LOG.info("Creating configuration file %s" % os.path.abspath(ansible_module.params["dest"]))
 
@@ -561,8 +571,12 @@ def create_tempest_users(tenants_client, roles_client, users_client, conf,
                             conf.get('identity', 'password'),
                             conf.get('identity', 'tenant_name'))
 
+    username = conf.get_defaulted('auth', 'admin_username')
+    if username is None:
+        username = conf.get_defaulted('identity', 'admin_username')
+
     give_role_to_user(tenants_client, roles_client, users_client,
-                      conf.get('identity', 'admin_username'),
+                      username,
                       conf.get('identity', 'tenant_name'), role_name='admin')
 
     # Prior to juno, and with earlier juno defaults, users needed to have
@@ -762,6 +776,7 @@ def find_or_upload_image(client, image_id, image_name, allow_creation,
 
 def create_tempest_networks(clients, conf, has_neutron, public_network_id):
     label = None
+    public_network_name = None
     # TODO(tkammer): separate logic to different func of Nova network
     # vs Neutron
     if has_neutron:
@@ -776,6 +791,7 @@ def create_tempest_networks(clients, conf, has_neutron, public_network_id):
             network_list = client.list_networks()
             for network in network_list['networks']:
                 if network['id'] == public_network_id:
+                    public_network_name = network['name']
                     break
             else:
                 raise ValueError('provided network id: {0} was not found.'
@@ -789,6 +805,7 @@ def create_tempest_networks(clients, conf, has_neutron, public_network_id):
                 if network['router:external'] and network['subnets']:
                     LOG.info("Found network, using: {0}".format(network['id']))
                     public_network_id = network['id']
+                    public_network_name = network['name']
                     break
 
             # Couldn't find an existing external network
@@ -799,6 +816,8 @@ def create_tempest_networks(clients, conf, has_neutron, public_network_id):
 
         if public_network_id is not None:
             conf.set('network', 'public_network_id', public_network_id)
+        if public_network_name is not None:
+            conf.set('network', 'floating_network_name', public_network_name)
 
     else:
         client = clients.get_nova_net_client()
@@ -811,6 +830,19 @@ def create_tempest_networks(clients, conf, has_neutron, public_network_id):
     elif not has_neutron:
         raise Exception('fixed_network_name could not be discovered and'
                         ' must be specified')
+
+
+def configure_keystone_feature_flags(conf, services):
+    """Set keystone feature flags based upon version ID."""
+    supported_versions = services.get('identity', {}).get('versions', [])
+    for version in supported_versions:
+        major, minor = version.split('.')[:2]
+        # Enable the domain specific roles feature flag. For more information,
+        # see https://developer.openstack.org/api-ref/identity/v3
+        if major == 'v3' and int(minor) >= 6:
+            conf.set('identity-feature-enabled',
+                     'forbid_global_implied_dsr',
+                     'True')
 
 
 def configure_boto(conf, services):
