@@ -190,7 +190,7 @@ def main():
         overrides_file=dict(type="path", required=False, default=""),
         defaults_file=dict(type="path", required=False, default=""),
         deployer_input=dict(type="path", required=False, default=""),
-        overrides=dict(type="list", required=False, default=""),
+        overrides=dict(type="dict", required=False, default=""),
         create=dict(type="bool", required=False, default=False),
         admin_cred=dict(type="bool", required=False, default=True),
         use_test_accounts=dict(type="bool", required=False, default=False),
@@ -312,13 +312,14 @@ def main():
         LOG.info("Creating configuration file %s" % os.path.abspath(ansible_module.params["dest"]))
 
         output_path = unfrackpath(ansible_module.params["dest"])
+        prepare_path(output_path)
         if os.path.isdir(output_path):
-            os.path.join(output_path, "tempest.conf")
+            output_path = os.path.join(output_path, "tempest.conf")
         with open(output_path, 'w') as f:
             conf.write(f)
 
         ansible_module.exit_json(msg="generated tempest.conf successfully",
-                                 config_path=output_path, changed=True)
+                                 dest=output_path, changed=True)
     except Exception as error:
         ansible_module.fail_json(msg=str(error))
 
@@ -379,6 +380,12 @@ def makedirs_safe(path, mode=None):
         except OSError as e:
             if e.errno != EEXIST:
                 raise Exception("Unable to create local directories(%s): %s" % (to_native(rpath), to_native(e)))
+
+
+def load_overrides(conf, overrides):
+    for k, value in overrides.items():
+        section, key = k.split('.')
+        conf.set(section, key, value, priority=True)
 
 
 def parse_overrides(overrides):
