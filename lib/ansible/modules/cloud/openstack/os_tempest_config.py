@@ -276,10 +276,11 @@ def main():
             # renamed to 'admin_project_name' in auth section
             conf.set("identity", "admin_tenant_name", "")
             conf.set("identity", "admin_password", "")
-            conf.set("auth", "allow_tenant_isolation", "False")
+            conf.set("auth", "use_dynamic_credentials", "False")
 
         if ansible_module.params["use_test_accounts"]:
             conf.set("auth", "allow_tenant_isolation", "True")
+            conf.set("auth", "test_accounts_file", "etc/accounts.yaml")
 
         clients = ClientManager(conf, ansible_module.params["admin_cred"])
 
@@ -313,6 +314,13 @@ def main():
         configure_boto(conf, services)
         configure_keystone_feature_flags(conf, services)
         configure_horizon(conf)
+
+        # TODO
+        # remove all unwanted values if were specified
+        # if args.remove != {}:
+        #     LOG.info("Removing configuration: %s", str(args.remove))
+        #     conf.remove_values(args)
+
         LOG.info("Creating configuration file %s" % os.path.abspath(ansible_module.params["dest"]))
 
         output_path = unfrackpath(ansible_module.params["dest"])
@@ -471,14 +479,34 @@ class ClientManager(object):
     def __init__(self, conf, admin):
 
         self.identity_version = self.get_identity_version(conf)
+        username = None
+        password = None
+        tenant_name = None
         if admin:
-            username = conf.get_defaulted('identity', 'admin_username')
-            password = conf.get_defaulted('identity', 'admin_password')
-            tenant_name = conf.get_defaulted('identity', 'admin_tenant_name')
+            if conf.has_option('identity', 'admin_username'):
+                username = conf.get_defaulted('identity', 'admin_username')
+            else:  # conf.has_option('auth', 'admin_username'):
+                username = conf.get_defaulted('auth', 'admin_username')
+
+            if conf.has_option('identity', 'admin_password'):
+                password = conf.get_defaulted('identity', 'admin_password')
+            else:  # conf.has_option('auth', 'admin_password'):
+                password = conf.get_defaulted('auth', 'admin_password')
+
+            if conf.has_option('identity', 'admin_tenant_name'):
+                tenant_name = conf.get_defaulted('identity', 'admin_tenant_name')
+            elif conf.has_option('auth', 'admin_tenant_name'):
+                tenant_name = conf.get_defaulted('auth', 'admin_tenant_name')
+            else:  # conf.has_option('auth', 'admin_project_name'):
+                tenant_name = conf.get_defaulted('auth', 'admin_project_name')
+
         else:
-            username = conf.get_defaulted('identity', 'username')
-            password = conf.get_defaulted('identity', 'password')
-            tenant_name = conf.get_defaulted('identity', 'tenant_name')
+            if conf.has_option('identity', 'username'):
+                username = conf.get_defaulted('identity', 'username')
+            if conf.has_option('identity', 'password'):
+                password = conf.get_defaulted('identity', 'password')
+            if conf.has_option('identity', 'tenant_name'):
+                tenant_name = conf.get_defaulted('identity', 'tenant_name')
 
         self.identity_region = conf.get_defaulted('identity', 'region')
         default_params = dict(
@@ -509,7 +537,7 @@ class ClientManager(object):
                 self.identity_region, endpoint_type='adminURL',
                 **default_params)
         else:
-            self.identity = identity_v3_client.IdentityV3Client(
+            self.identity = identity_v3_client.IdentityClient(
                 _auth, conf.get_defaulted('identity', 'catalog_type'),
                 self.identity_region, endpoint_type='adminURL',
                 **default_params)
@@ -776,8 +804,7 @@ def find_or_upload_image(client, image_id, image_name, allow_creation,
             _download_image(client, image['id'], path)
     else:
         LOG.info("Creating image '%s'", image_name)
-        if image_source.startswith("http:") or \
-                image_source.startswith("https:"):
+        if image_source.startswith("http:") or image_source.startswith("https:"):
             _download_file(image_source, image_dest)
         else:
             shutil.copyfile(image_source, image_dest)
@@ -900,9 +927,7 @@ def configure_discovered_services(conf, services):
         # ceilometer is still transitioning from metering to telemetry
         if service == 'telemetry' and 'metering' in services:
             service = 'metering'
-        # data-processing is the default service name since Kilo
-        elif service == 'data-processing' and 'data_processing' in services:
-            service = 'data_processing'
+
         conf.set('service_available', codename, str(service in services))
 
     # set supported API versions for services with more of them
@@ -923,7 +948,7 @@ def configure_discovered_services(conf, services):
                 # tempest.conf is inconsistent and uses 'object-store' for the
                 # catalog name but 'object-storage-feature-enabled'
                 service = 'object-storage'
-            if service == 'identity' and keystone_v3_support:
+            elif service == 'identity' and keystone_v3_support:
                 identity_v3_ext = get_identity_v3_extensions(
                     conf.get("identity", "uri_v3"))
                 extensions = list(set(extensions.split(',') + identity_v3_ext))
