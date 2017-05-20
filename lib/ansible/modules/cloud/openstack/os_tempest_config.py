@@ -41,7 +41,7 @@ options:
         default: ''
     overrides:
         description: 
-            Key value pairs to modify. The format is 'section.key,value' where section is a section header in the configuration file.
+            Key value pairs to modify. The format is a dictionary 'section.key : value' where section is a section header in the configuration file.
         required: False
         default: ''
     create:
@@ -79,6 +79,9 @@ options:
             If given  will write all the log info to the given file.
         required: False
         default: os.devnull
+    remove:
+        description:
+            Key value pairs to remove. The format is a dictionary 'section.key : value' where section is a section header in the configuration file.
 notes:
     - This module is derrived from Red Hat's python-tempestconf repository, U(https://github.com/redhat-openstack/python-tempestconf)
 '''
@@ -132,6 +135,13 @@ try:
     HAS_URL = True
 except ImportError:
     HAS_URL = True
+
+try:
+    import shade
+
+    HAS_SHADE = True
+except ImportError:
+    HAS_SHADE = False
 
 # imports for the code copied from ansible.utils.path
 from errno import EEXIST
@@ -198,6 +208,7 @@ def main():
         image=dict(type="str", required=False, default=DEFAULT_IMAGE),
         network_id=dict(type="str", required=False, default=""),
         log_file=dict(type="path", required=False, default=""),
+        remove=dict(type="dict", required=False)
     ), required_together=(('create', 'admin_cred'),), )
 
     # if ansible_module.params["create"] and not ansible_module.params["admin_cred"]:
@@ -210,6 +221,8 @@ def main():
         ansible_module.fail_json(msg="Failed to import Tempest")
     if not HAS_URL:
         ansible_module.fail_json(msg="Failed to import urllib3 or requests")
+    if not HAS_SHADE:
+        ansible_module.fail_json(msg="Failed to import shade")
 
     try:
         log_file_path = unfrackpath(ansible_module.params["log_file"])
@@ -286,6 +299,7 @@ def main():
 
         swift_discover = conf.get_defaulted('object-storage-feature-enabled',
                                             'discoverability')
+        services = discover_services(conf)
         services = discover(
             clients.auth_provider,
             clients.identity_region,
@@ -334,6 +348,11 @@ def main():
                                  dest=output_path, changed=True)
     except Exception as error:
         ansible_module.fail_json(msg=str(error))
+
+
+# TODO
+def discover_services(conf):
+    pass
 
 
 def prepare_path(file_path):
