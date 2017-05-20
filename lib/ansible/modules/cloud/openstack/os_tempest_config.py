@@ -233,20 +233,24 @@ def main():
                     conf.set(section, key, value, priority=True)
 
         if ansible_module.params["overrides"]:
-            for section, key, value in parse_overrides(ansible_module.params["overrides"]):
-                conf.set(section, key, value, priority=True)
+            try:
+                load_overrides(conf, ansible_module.params["overrides"])
+            except Exception as e:
+                ansible_module.fail_json(
+                    msg="couldn't parse overrides, make sure the overrides are a dict and that each key is in the format section.key",
+                    error=str(e))
 
         # validate necessary settings are being given
         if ansible_module.params["admin_cred"]:
-            if not conf.has_option("identity", "admin_username"):
-                ansible_module.fail_json(
-                    msg="the 'admin_cred' option require 'admin_username' to be provided by the user or as a default")
-            if not conf.has_option("identity", "admin_tenant_name"):
-                ansible_module.fail_json(
-                    msg="the 'admin_cred' option require 'admin_tenant_name' to be provided by the user or as a default")
-            if not conf.has_option("identity", "admin_password"):
-                ansible_module.fail_json(
-                    msg="the 'admin_cred' option require 'admin_password' to be provided by the user or as a default")
+            if not (conf.has_option("identity", "admin_username") or conf.has_option("auth", "admin_username")):
+                ansible_module.fail_json(msg="the 'admin_cred' option require 'admin_username' to be provided by the user or as a default")
+
+            if not (conf.has_option("identity", "admin_tenant_name") or conf.has_option("auth", "admin_project_name") or conf.has_option("auth", "admin_tenant_name")):
+                ansible_module.fail_json(msg="the 'admin_cred' option require 'admin_project_name' or 'admin_tenant_name'(deprecated) to be provided by the user or as a default")
+
+            if not (conf.has_option("identity", "admin_password") or conf.has_option("auth", "admin_password")):
+                ansible_module.fail_json(msg="the 'admin_cred' option require 'admin_password' to be provided by the user or as a default")
+
         if not conf.has_option("identity", "uri"):
             ansible_module.fail_json(msg="the identity.uri setting must be provided")
 
