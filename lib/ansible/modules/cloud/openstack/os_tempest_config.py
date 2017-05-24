@@ -11,7 +11,7 @@ short_description: configs Tempest (OpenStack)
 description:
     - Generates tempest.conf file using user's settings,defaults file and self-discovery.
     
-version_added: 2.3.0
+version_added: 2.4
     
 author: "Tal Shafir , @TalShafir"
 requirements: ["tempest", "urllib3 >= 1.15", "requests"]
