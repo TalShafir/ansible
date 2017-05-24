@@ -20,12 +20,6 @@ options:
         description:
             Path for a file that this module will create(usually named tempest.conf)
         required: True
-    overrides_file:
-        description:
-            Path for a file containing overrides values in the format section.option=value
-            where section is a section header in the configuration file.
-        required: False
-        default: ''
     deployer_input:
         description:
             Path for a file in the format of Tempest's configuration file that will override the default values.
@@ -197,7 +191,6 @@ SERVICE_EXTENSION_KEY = {
 def main():
     ansible_module = AnsibleModule(argument_spec=dict(
         dest=dict(type="path", required=True),
-        overrides_file=dict(type="path", required=False, default=""),
         defaults_file=dict(type="path", required=False, default=""),
         deployer_input=dict(type="path", required=False, default=""),
         overrides=dict(type="dict", required=False, default=""),
@@ -207,7 +200,7 @@ def main():
         image_disk_format=dict(type="str", required=False, default=DEFAULT_IMAGE_FORMAT),
         image=dict(type="str", required=False, default=DEFAULT_IMAGE),
         network_id=dict(type="str", required=False, default=""),
-        log_file=dict(type="path", required=False, default=""),
+        log_file=dict(type="path", required=False, default=os.devnull),
         remove=dict(type="dict", required=False)
     ), required_together=(('create', 'admin_cred'),), )
 
@@ -299,7 +292,7 @@ def main():
 
         swift_discover = conf.get_defaulted('object-storage-feature-enabled',
                                             'discoverability')
-        services = discover_services(conf)
+        # services = discover_services(conf)
         services = discover(
             clients.auth_provider,
             clients.identity_region,
