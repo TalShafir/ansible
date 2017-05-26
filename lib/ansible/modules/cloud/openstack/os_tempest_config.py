@@ -75,9 +75,9 @@ options:
         default: os.devnull
     remove:
         description:
-            Key value pairs to remove. The format is a dictionary 'section.key : value' where section is a section header in the configuration file.
+            Key values pairs to remove. The format is a dictionary 'section.key : value[,value]' where section is a section header in the configuration file.
 notes:
-    - This module is derrived from Red Hat's python-tempestconf repository, U(https://github.com/redhat-openstack/python-tempestconf)
+    - This module is derived from Red Hat's python-tempestconf repository, U(https://github.com/redhat-openstack/python-tempestconf)
 '''
 
 EXAMPLES = '''
@@ -322,11 +322,9 @@ def main():
         configure_keystone_feature_flags(conf, services)
         configure_horizon(conf)
 
-        # TODO
         # remove all unwanted values if were specified
-        # if args.remove != {}:
-        #     LOG.info("Removing configuration: %s", str(args.remove))
-        #     conf.remove_values(args)
+        if ansible_module.params['remove']:
+            remove_options(conf, ansible_module.params['remove'])
 
         LOG.info("Creating configuration file %s" % os.path.abspath(ansible_module.params["dest"]))
 
@@ -412,27 +410,22 @@ def load_overrides(conf, overrides):
         conf.set(section, key, value, priority=True)
 
 
-def parse_overrides(overrides):
-    """Manual parsing of positional arguments.
-
-    TODO(mkollaro) find a way to do it in argparse
-    """
-    if len(overrides) % 2 != 0:
-        raise Exception("An odd number of override options was found. The"
-                        " overrides have to be in 'section.key value' format. ")
-    i = 0
-    new_overrides = []
-    while i < len(overrides):
-        section_key = overrides[i].split('.')
-        value = overrides[i + 1]
-        if len(section_key) != 2:
-            raise Exception("Missing dot. The option overrides has to come in"
-                            " the format 'section.key value', but got '%s'."
-                            % (overrides[i] + ' ' + value))
-        section, key = section_key
-        new_overrides.append((section, key, value))
-        i += 2
-    return new_overrides
+def remove_options(conf, removes):
+    for k, v in removes.items():
+        if '.' not in k:
+            raise Exception("remove option is not in the format of 'section.key: value[,value]'")
+        section, key = k.split('.')
+        # remove all the options in section.key
+        if not v:
+            conf.remove_option(section, key)
+        else:
+            values_to_remove = v.split(',')
+            values = [value for value in conf.get(section, key).split(',') if value not in values_to_remove]
+            # if any option left
+            if len(values) > 0:
+                conf.set(section, key, ','.join(values))
+            else:
+                conf.remove_option(section, key)
 
 
 class ClientManager(object):
